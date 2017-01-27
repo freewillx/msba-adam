@@ -1,15 +1,21 @@
 library(stringr)
 library(zoo)
 
-####### Load Data #######
+###### Load Data ######
 #' Load raw data
 #' @return time series data: "date" "us.price" "us.rig" "us.prod" "tool.a" "tool.b" "tool.c"
 LoadMultivariateTimeSeries <- function(fileName){
   
   tool.demand.data <- read.csv(fileName)
-  tool.demand.data$date <- as.Date(str_replace_all(paste(tool.demand.data$Year, "-", tool.demand.data$Month, "-1"), " ", ""))
   
-  tool.demand.data <- na.omit(tool.demand.data[,c(9,3:8)])
+  if("Day" %in% colnames(tool.demand.data)){
+    tool.demand.data$date <- as.Date(str_replace_all(paste(tool.demand.data$Year, "-", tool.demand.data$Month, "-", tool.demand.data$Day), " ", ""))
+    tool.demand.data <- na.omit(tool.demand.data[,c(ncol(tool.demand.data),4:(ncol(tool.demand.data)-1))])
+  } else {
+    tool.demand.data$date <- as.Date(str_replace_all(paste(tool.demand.data$Year, "-", tool.demand.data$Month, "-1"), " ", ""))
+    tool.demand.data <- na.omit(tool.demand.data[,c(ncol(tool.demand.data),3:(ncol(tool.demand.data)-1))])
+  }
+  
   
   return(tool.demand.data)
 }
@@ -19,12 +25,13 @@ monthlyDataA = monthlyFeaturesTbl %>% select(-starts_with("tool.b")) %>% select(
 monthlyDataB = monthlyFeaturesTbl %>% select(-starts_with("tool.a")) %>% select(-starts_with("tool.c")) %>% rename(demand = tool.b)
 monthlyDataC = monthlyFeaturesTbl %>% select(-starts_with("tool.a")) %>% select(-starts_with("tool.b")) %>% rename(demand = tool.c)
 
-#######  Feature Engineering ####### 
+
+###### Feature Engineering ######
 library(dplyr)
 
 #' A Function to create additional data features to express time series quarterly changes 
 #' @param monthlyData: date, us.price, us.rig, us.prod, demand
-#' @return time series data: date, us.price, us.rig, us.prod, us.price.ma, us.rig.ma, us.prod.ma, demand.ma, us.price.sd, us.rig.sd, us.prod.sd, demand.sd, demand, demand.lead
+#' @return time series data: date, us.price, us.rig, us.prod, us.price.ma, us.rig.ma, us.prod.ma, demand.ma, us.price.sd, us.rig.sd, us.prod.sd, demand.sd, demand, demand.actual
 CreateTimeDataFeatures <- function(monthlyData, histTimeWindow = 2, forecastTimeRange = 1, std = TRUE){
   if (histTimeWindow > 1){
     monthly.data.features <- monthlyData %>% 
@@ -48,7 +55,7 @@ CreateTimeDataFeatures <- function(monthlyData, histTimeWindow = 2, forecastTime
 }
 
 
-####### MARS Prediction with sliding window - default 24 months #######
+###### MARS Prediction with sliding window - default 24 months ######
 library(earth)
 
 #' A prediction function using MARS applied to each row of a time series dataframe to calculate forecast 
@@ -65,7 +72,7 @@ MarsPredictRowSlidingWindow <- function(rowEntry, fullDataSet, trainWindow=24, f
   return(mars.pred)
 }
 
-####### SVM Prediction with sliding window - default 24 months #######
+###### SVM Prediction with sliding window - default 24 months ######
 library(e1071)
 
 #' A prediction function using SVM applied to each row of a time series dataframe to calculate forecast 
@@ -91,7 +98,8 @@ SvmPredictRowSlidingWindow <- function(rowEntry, fullDataSet, trainWindow=24, f,
   return(svm.pred)
 }
 
-####### Ensemble Modeling #######
+###### Ensemble Modeling ######
+library(lubridate)
 
 #' The bagging ensemble prediction function using monthly time series data to forcast demand
 #' The ensemble function will first generate data features for different base models with monthly data summerized at different length of historical time window:
@@ -117,7 +125,16 @@ EnsembleDemandForecast <- function(monthlyData, forecastTimeRange = 1, modelMeth
   annualDataFeatures = CreateTimeDataFeatures(monthlyData, histTimeWindow = 12, forecastTimeRange)
   
   # Store predictions of each base model as input data for Ensemble - preserve first 24 months for MARS trainning
-  ensembleData = select(monthlyDataFeatures[(trainSize+1):nrow(monthlyDataFeatures),], date, demand, demand.lead)
+  ensembleData = select(monthlyDataFeatures[(trainSize+1):nrow(monthlyDataFeatures),], date, demand.lead) %>%
+    rename(demand.actual = demand.lead) %>%
+    mutate(date = lead(date, n = forecastTimeRange))
+  
+  # Add n more rows to store predictions, n=forecastTimeRange
+  lastDateWithData = ensembleData$date[nrow(ensembleData)-forecastTimeRange]
+  for (i in 1:forecastTimeRange) {
+    month(lastDateWithData) <- month(lastDateWithData) + 1
+    ensembleData$date[nrow(ensembleData)-forecastTimeRange+i] <- lastDateWithData
+  }
   
   
   # Monthly Base Model 
@@ -169,7 +186,7 @@ EnsembleDemandForecast <- function(monthlyData, forecastTimeRange = 1, modelMeth
          trainWindow=trainSize,
          f = annual.formula))
     
-    ensembleData$ensemble = rowMeans(ensembleData[3:ncol(ensembleData)])
+    ensembleData$ensemble.pred = rowMeans(ensembleData[3:ncol(ensembleData)])
     
   } else if (modelMethod == "SVM"){
     
@@ -210,7 +227,7 @@ EnsembleDemandForecast <- function(monthlyData, forecastTimeRange = 1, modelMeth
          f = annual.formula,
          svmParam = best.svm.param.annual))
     
-    ensembleData$ensemble = rowMeans(ensembleData[3:ncol(ensembleData)])
+    ensembleData$ensemble.pred = rowMeans(ensembleData[3:ncol(ensembleData)])
     
   }
   
@@ -218,7 +235,7 @@ EnsembleDemandForecast <- function(monthlyData, forecastTimeRange = 1, modelMeth
 }
 
 
-###### Forecast Demand #####
+###### Forecast Demand ######
 aN1EnsembleData = EnsembleDemandForecast(monthlyDataA, forecastTimeRange = 1)
 aN2EnsembleData = EnsembleDemandForecast(monthlyDataA, forecastTimeRange = 2)
 aN3EnsembleData = EnsembleDemandForecast(monthlyDataA, forecastTimeRange = 3)
@@ -243,15 +260,30 @@ cN3EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 3)
 # cN2EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 2, modelMethod = "SVM")
 # cN3EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 3, modelMethod = "SVM")
 
-###### Calculate RMSE #####
+
+# Calculate Difference
+aN1EnsembleData$monthly.diff = aN1EnsembleData$ensemble.pred - aN1EnsembleData$demand.actual
+aN2EnsembleData$monthly.diff = aN2EnsembleData$ensemble.pred - aN2EnsembleData$demand.actual
+aN3EnsembleData$monthly.diff = aN3EnsembleData$ensemble.pred - aN3EnsembleData$demand.actual
+
+bN1EnsembleData$monthly.diff = bN1EnsembleData$ensemble.pred - bN1EnsembleData$demand.actual
+bN2EnsembleData$monthly.diff = bN2EnsembleData$ensemble.pred - bN2EnsembleData$demand.actual
+bN3EnsembleData$monthly.diff = bN3EnsembleData$ensemble.pred - bN3EnsembleData$demand.actual
+
+cN1EnsembleData$monthly.diff = cN1EnsembleData$ensemble.pred - cN1EnsembleData$demand.actual
+cN2EnsembleData$monthly.diff = cN2EnsembleData$ensemble.pred - cN2EnsembleData$demand.actual
+cN3EnsembleData$monthly.diff = cN3EnsembleData$ensemble.pred - cN3EnsembleData$demand.actual
+
+
+###### Calculate RMSE ######
 CalculateRMSE <- function(predictedData){
   predictedData=na.omit(predictedData)
   rmseCompare <- data.frame(
-    monthlyModel = sqrt( sum( (predictedData$demand.lead - predictedData$monthly.pred)^2 , na.rm = TRUE ) / nrow(predictedData)),
-    quarterlyModel = sqrt( sum( (predictedData$demand.lead - predictedData$quarterly.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
-    halfAnnualModel = sqrt( sum( (predictedData$demand.lead - predictedData$half.annual.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
-    annualModel = sqrt( sum( (predictedData$demand.lead - predictedData$annual.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
-    ensembleModel = sqrt( sum( (predictedData$demand.lead - predictedData$ensemble)^2 , na.rm = TRUE ) / nrow(predictedData) )
+    monthlyModel = sqrt( sum( (predictedData$demand.actual - predictedData$monthly.pred)^2 , na.rm = TRUE ) / nrow(predictedData)),
+    quarterlyModel = sqrt( sum( (predictedData$demand.actual - predictedData$quarterly.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
+    halfAnnualModel = sqrt( sum( (predictedData$demand.actual - predictedData$half.annual.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
+    annualModel = sqrt( sum( (predictedData$demand.actual - predictedData$annual.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
+    ensembleModel = sqrt( sum( (predictedData$demand.actual - predictedData$ensemble.pred)^2 , na.rm = TRUE ) / nrow(predictedData) )
     )
   
   return(rmseCompare)
@@ -272,64 +304,134 @@ rmseResults <- rbind(rmseResults, cbind(data.frame(tool="C", forecastMonth=3), C
 write.csv(rmseResults, file = "./Results/RMSE.csv")
 
 
-###### Generate Data For Phase 3 Simulations #####
+###### Generate Data For Phase 3 Simulations - Monthly Demand Data ######
 # Tool A
-aN1EnsembleData$diff = aN1EnsembleData$ensemble - aN1EnsembleData$demand.lead
 aDiffMeanStd <- data.frame(tool="A", forecastMonth=1, 
-                             mean=mean(aN1EnsembleData$diff, na.rm = TRUE), 
-                             std=sd(aN1EnsembleData$diff, na.rm = TRUE))
+                             mean=mean(aN1EnsembleData$monthly.diff, na.rm = TRUE), 
+                             std=sd(aN1EnsembleData$monthly.diff, na.rm = TRUE))
 
-aN2EnsembleData$diff = aN2EnsembleData$ensemble - aN2EnsembleData$demand.lead
 aDiffMeanStd <- rbind(aDiffMeanStd, data.frame(tool="A", forecastMonth=2, 
-                                  mean=mean(aN2EnsembleData$diff, na.rm = TRUE), 
-                                  std=sd(aN2EnsembleData$diff, na.rm = TRUE)))
+                                  mean=mean(aN2EnsembleData$monthly.diff, na.rm = TRUE), 
+                                  std=sd(aN2EnsembleData$monthly.diff, na.rm = TRUE)))
 
-aN3EnsembleData$diff = aN3EnsembleData$ensemble - aN3EnsembleData$demand.lead
 aDiffMeanStd <- rbind(aDiffMeanStd, data.frame(tool="A", forecastMonth=3, 
-                                  mean=mean(aN3EnsembleData$diff, na.rm = TRUE), 
-                                  std=sd(aN3EnsembleData$diff, na.rm = TRUE)))
+                                  mean=mean(aN3EnsembleData$monthly.diff, na.rm = TRUE), 
+                                  std=sd(aN3EnsembleData$monthly.diff, na.rm = TRUE)))
 
 # Tool B
-bN1EnsembleData$diff = bN1EnsembleData$ensemble - bN1EnsembleData$demand.lead
 bDiffMeanStd <- data.frame(tool="B", forecastMonth=1, 
-                              mean=mean(bN1EnsembleData$diff, na.rm = TRUE), 
-                              std=sd(bN1EnsembleData$diff, na.rm = TRUE))
+                              mean=mean(bN1EnsembleData$monthly.diff, na.rm = TRUE), 
+                              std=sd(bN1EnsembleData$monthly.diff, na.rm = TRUE))
 
-bN2EnsembleData$diff = bN2EnsembleData$ensemble - bN2EnsembleData$demand.lead
 bDiffMeanStd <- rbind(bDiffMeanStd, data.frame(tool="B", forecastMonth=2, 
-                                                     mean=mean(bN2EnsembleData$diff, na.rm = TRUE), 
-                                                     std=sd(bN2EnsembleData$diff, na.rm = TRUE)))
+                                                     mean=mean(bN2EnsembleData$monthly.diff, na.rm = TRUE), 
+                                                     std=sd(bN2EnsembleData$monthly.diff, na.rm = TRUE)))
 
-bN3EnsembleData$diff = bN3EnsembleData$ensemble - bN3EnsembleData$demand.lead
 bDiffMeanStd <- rbind(bDiffMeanStd, data.frame(tool="B", forecastMonth=3, 
-                                                     mean=mean(bN3EnsembleData$diff, na.rm = TRUE), 
-                                                     std=sd(bN3EnsembleData$diff, na.rm = TRUE)))
+                                                     mean=mean(bN3EnsembleData$monthly.diff, na.rm = TRUE), 
+                                                     std=sd(bN3EnsembleData$monthly.diff, na.rm = TRUE)))
 
 # Tool C
-cN1EnsembleData$diff = cN1EnsembleData$ensemble - cN1EnsembleData$demand.lead
 cDiffMeanStd <- data.frame(tool="C", forecastMonth=1, 
-                              mean=mean(cN1EnsembleData$diff, na.rm = TRUE), 
-                              std=sd(cN1EnsembleData$diff, na.rm = TRUE))
+                              mean=mean(cN1EnsembleData$monthly.diff, na.rm = TRUE), 
+                              std=sd(cN1EnsembleData$monthly.diff, na.rm = TRUE))
 
-cN2EnsembleData$diff = cN2EnsembleData$ensemble - cN2EnsembleData$demand.lead
 cDiffMeanStd <- rbind(cDiffMeanStd, data.frame(tool="C", forecastMonth=2, 
-                                                     mean=mean(cN2EnsembleData$diff, na.rm = TRUE), 
-                                                     std=sd(cN2EnsembleData$diff, na.rm = TRUE)))
+                                                     mean=mean(cN2EnsembleData$monthly.diff, na.rm = TRUE), 
+                                                     std=sd(cN2EnsembleData$monthly.diff, na.rm = TRUE)))
 
-cN3EnsembleData$diff = cN3EnsembleData$ensemble - cN3EnsembleData$demand.lead
 cDiffMeanStd <- rbind(cDiffMeanStd, data.frame(tool="C", forecastMonth=3, 
-                                                     mean=mean(cN3EnsembleData$diff, na.rm = TRUE), 
-                                                     std=sd(cN3EnsembleData$diff, na.rm = TRUE)))
+                                                     mean=mean(cN3EnsembleData$monthly.diff, na.rm = TRUE), 
+                                                     std=sd(cN3EnsembleData$monthly.diff, na.rm = TRUE)))
 
-diffMeanStd <- rbind(aDiffMeanStd,bDiffMeanStd,cDiffMeanStd)
+monthlyDiffMeanStd <- rbind(aDiffMeanStd,bDiffMeanStd,cDiffMeanStd)
 
-write.csv(diffMeanStd, file = "./Results/diffMeanStd.csv")
+write.csv(monthlyDiffMeanStd, file = "./Results/monthlyDiffMeanStd.csv")
+
+
+###### Generate Data For Phase 3 Simulations - Daily Demand Data ######
+
+dailyDemandA <- tbl_df(LoadMultivariateTimeSeries("./Data/toola_dd.csv")) %>% rename(demand = toola.dd)
+dailyDemandA$month=floor_date(dailyDemandA$date, unit = "month")
+# Exclude March 2016 Data due to data quality issue
+dailyDemandA <- dailyDemandA %>% filter(month != as.Date("2016-03-01"))
+aN1dailyDemand <- na.omit(left_join(dailyDemandA, select(aN1EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
+aN2dailyDemand <- na.omit(left_join(dailyDemandA, select(aN2EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
+aN3dailyDemand <- na.omit(left_join(dailyDemandA, select(aN3EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
+
+dailyDemandB <- tbl_df(LoadMultivariateTimeSeries("./Data/toolb_dd.csv")) %>% rename(demand = toolb.dd)
+dailyDemandB$month=floor_date(dailyDemandB$date, unit = "month")
+# Exclude March 2016 Data due to data quality issue
+dailyDemandB <- dailyDemandB %>% filter(month != as.Date("2016-03-01"))
+bN1dailyDemand <- na.omit(left_join(dailyDemandB, select(bN1EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
+bN2dailyDemand <- na.omit(left_join(dailyDemandB, select(bN2EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
+bN3dailyDemand <- na.omit(left_join(dailyDemandB, select(bN3EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
+
+dailyDemandC <- tbl_df(LoadMultivariateTimeSeries("./Data/toolc_dd.csv")) %>% rename(demand = toolc.dd)
+dailyDemandC$month=floor_date(dailyDemandC$date, unit = "month")
+# Exclude March 2016 Data due to data quality issue
+dailyDemandC <- dailyDemandC %>% filter(month != as.Date("2016-03-01"))
+cN1dailyDemand <- na.omit(left_join(dailyDemandC, select(cN1EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
+cN2dailyDemand <- na.omit(left_join(dailyDemandC, select(cN2EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
+cN3dailyDemand <- na.omit(left_join(dailyDemandC, select(cN3EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
+
+# Calculate Daily Diff
+aN1dailyDemand$diff = aN1dailyDemand$ensemble.pred-aN1dailyDemand$demand
+aN2dailyDemand$diff = aN2dailyDemand$ensemble.pred-aN2dailyDemand$demand
+aN3dailyDemand$diff = aN3dailyDemand$ensemble.pred-aN3dailyDemand$demand
+
+bN1dailyDemand$diff = bN1dailyDemand$ensemble.pred-bN1dailyDemand$demand
+bN2dailyDemand$diff = bN2dailyDemand$ensemble.pred-bN2dailyDemand$demand
+bN3dailyDemand$diff = bN3dailyDemand$ensemble.pred-bN3dailyDemand$demand
+
+cN1dailyDemand$diff = cN1dailyDemand$ensemble.pred-cN1dailyDemand$demand
+cN2dailyDemand$diff = cN2dailyDemand$ensemble.pred-cN2dailyDemand$demand
+cN3dailyDemand$diff = cN3dailyDemand$ensemble.pred-cN3dailyDemand$demand
+
+
+# Tool A
+aDiffMeanStd <- data.frame(tool="A", forecastMonth=1, 
+                           mean=mean(aN1dailyDemand$diff), std=sd(aN1dailyDemand$diff))
+
+aDiffMeanStd <- rbind(aDiffMeanStd, data.frame(tool="A", forecastMonth=2, 
+                                               mean=mean(aN2dailyDemand$diff), std=sd(aN2dailyDemand$diff)))
+
+aDiffMeanStd <- rbind(aDiffMeanStd, data.frame(tool="A", forecastMonth=3, 
+                                               mean=mean(aN3dailyDemand$diff), std=sd(aN3dailyDemand$diff)))
+
+# Tool B
+bDiffMeanStd <- data.frame(tool="B", forecastMonth=1, 
+                           mean=mean(bN1dailyDemand$diff), std=sd(bN1dailyDemand$diff))
+
+bDiffMeanStd <- rbind(bDiffMeanStd, data.frame(tool="B", forecastMonth=2, 
+                                               mean=mean(bN2dailyDemand$diff), std=sd(bN2dailyDemand$diff)))
+
+bDiffMeanStd <- rbind(bDiffMeanStd, data.frame(tool="B", forecastMonth=3, 
+                                               mean=mean(bN3dailyDemand$diff), std=sd(bN3dailyDemand$diff)))
+
+# Tool C
+cDiffMeanStd <- data.frame(tool="C", forecastMonth=1, 
+                           mean=mean(cN1dailyDemand$diff), std=sd(cN1dailyDemand$diff))
+
+cDiffMeanStd <- rbind(cDiffMeanStd, data.frame(tool="C", forecastMonth=2, 
+                                               mean=mean(cN2dailyDemand$diff), std=sd(cN2dailyDemand$diff)))
+
+cDiffMeanStd <- rbind(cDiffMeanStd, data.frame(tool="C", forecastMonth=3, 
+                                               mean=mean(cN3dailyDemand$diff), std=sd(cN3dailyDemand$diff)))
+
+dailyDiffMeanStd <- rbind(aDiffMeanStd,bDiffMeanStd,cDiffMeanStd)
+
+write.csv(monthlyDiffMeanStd, file = "./Results/dailyDiffMeanStd.csv")
+
+
+
 
 
 # TODO:
 # Build function for random forest, could work for tool B
 # Calculate forecast differences againt daily demand of each tool and compute the mean and standard deviation
 # Box plot forecast difference
+# Check normal distribution of daily diff
 # Create Heat map of means and std of forecast differences
 # Time series plot of 1 months/2 months/3 months
 
