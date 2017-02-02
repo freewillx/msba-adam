@@ -68,7 +68,9 @@ MarsPredictRowSlidingWindow <- function(rowEntry, fullDataSet, trainWindow=24, f
   tool.train <- tail(fullDataSet %>% filter(date<rowEntry$date), trainWindow)
   tool.train <- na.omit(tool.train)
   mars.model <- earth(f, data = tool.train)
+
   mars.pred <- predict(mars.model, newdata = rowEntry)
+  mars.pred <- ifelse(mars.pred >= 0, mars.pred, 0)
   return(mars.pred)
 }
 
@@ -95,6 +97,7 @@ SvmPredictRowSlidingWindow <- function(rowEntry, fullDataSet, trainWindow=24, f,
   }
   
   svm.pred <- predict(svm.model, newdata = rowEntry)
+  svm.pred <- ifelse(svm.pred >= 0, svm.pred, 0)
   return(svm.pred)
 }
 
@@ -259,6 +262,165 @@ cN3EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 3)
 # cN1EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 1, modelMethod = "SVM")
 # cN2EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 2, modelMethod = "SVM")
 # cN3EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 3, modelMethod = "SVM")
+
+
+
+######  Time series plot of 1 months/2 months/3 months forecast ###### 
+library(plotly)
+
+# Tool A
+forecastDataA = select(monthlyDataA, date, demand) %>% head(24) %>% rename(train = demand) %>% 
+  full_join(select(aN1EnsembleData, date, demand.actual) %>% rename(actual = demand.actual), by = c("date" = "date")) %>%
+  full_join(select(aN1EnsembleData, date, ensemble.pred) %>% rename(pred1m = ensemble.pred), by = c("date" = "date")) %>%
+  full_join(select(aN2EnsembleData, date, ensemble.pred) %>% rename(pred2m = ensemble.pred), by = c("date" = "date")) %>%
+  full_join(select(aN3EnsembleData, date, ensemble.pred) %>% rename(pred3m = ensemble.pred), by = c("date" = "date"))
+
+# Interpolate points for smooth ploting
+forecastDataA[24,3:4] <- forecastDataA[24,2]
+forecastDataA[25,5] <- forecastDataA[25,3]
+forecastDataA[26,6] <- forecastDataA[26,3]
+
+plotToolAForecast <- plot_ly(data = forecastDataA, x=~date, hoverinfo = "name+x+y") %>%
+  add_lines(y = ~train, name = 'Training window', line = list(color = "rgb(31, 119, 180)", width = 4, dash = 'dashdot')) %>%
+  add_lines(y = ~actual, name = 'Actual demand', line = list(color = "rgb(31, 119, 180)", width = 4, dash = 'solid')) %>%
+  add_lines(y = ~pred3m, name = '3 Month Forecast', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~pred2m, name = '2 Month Forecast', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~pred1m, name = '1 Month Forecast', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  layout(title = "Tool A Demand Forecast",
+         xaxis = list(
+           title = "",
+           hoverformat = "%Y-%m",
+           showgrid = FALSE,
+           tickmode = "auto",
+           ticks = "inside",
+           rangeselector = list(
+             buttons = list(
+               list(
+                 count = 1,
+                 label = "1 yr",
+                 step = "year",
+                 stepmode = "backward"),
+               list(
+                 count = 2,
+                 label = "2 yr",
+                 step = "year",
+                 stepmode = "backward"),
+               list(step = "all"))),
+           rangeslider = list(type = "date")
+         ),
+         yaxis = list(
+           title = "demand",
+           autorange = TRUE,
+           autotick = TRUE,
+           showgrid = FALSE,
+           tickmode = "auto",
+           ticks = "inside",
+           rangemode = "tozero"
+         ),
+         shapes = list(
+           list(type = "rect",
+                fillcolor = "grey", line = list(color = "grey"), opacity = 0.1,
+                x0 = forecastDataA$date[1], x1 = forecastDataA$date[24], xref = "x",
+                y0 = 0, y1 = max(na.omit(forecastDataA$train)) + 2, yref = "y"))
+  )
+plotToolAForecast
+
+
+# Tool B
+forecastDataB = select(monthlyDataB, date, demand) %>% head(24) %>% rename(train = demand) %>% 
+  full_join(select(bN1EnsembleData, date, demand.actual) %>% rename(actual = demand.actual), by = c("date" = "date")) %>%
+  full_join(select(bN1EnsembleData, date, ensemble.pred) %>% rename(pred1m = ensemble.pred), by = c("date" = "date")) %>%
+  full_join(select(bN2EnsembleData, date, ensemble.pred) %>% rename(pred2m = ensemble.pred), by = c("date" = "date")) %>%
+  full_join(select(bN3EnsembleData, date, ensemble.pred) %>% rename(pred3m = ensemble.pred), by = c("date" = "date"))
+
+# Interpolate points for smooth ploting
+forecastDataB[24,3:4] <- forecastDataB[24,2]
+forecastDataB[25,5] <- forecastDataB[25,3]
+forecastDataB[26,6] <- forecastDataB[26,3]
+
+plotToolBForecast <- plot_ly(data = forecastDataB, x=~date, hoverinfo = "name+x+y") %>%
+  add_lines(y = ~train, name = 'Training window', line = list(color = "rgb(31, 119, 180)", width = 4, dash = 'solid')) %>%
+  add_lines(y = ~actual, name = 'Actual demand', line = list(color = "rgb(148,103,189)", width = 4, dash = 'solid')) %>%
+  add_lines(y = ~pred3m, name = '3 Month Forecast', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~pred2m, name = '2 Month Forecast', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~pred1m, name = '1 Month Forecast', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  layout(title = "Tool B Demand Forecast",
+         xaxis = list(
+           title = "",
+           hoverformat = "%Y-%m",
+           showgrid = FALSE,
+           tickmode = "auto",
+           ticks = "inside",
+           rangeselector = list(
+             buttons = list(
+               list(
+                 count = 1,
+                 label = "1 yr",
+                 step = "year",
+                 stepmode = "backward"),
+               list(
+                 count = 2,
+                 label = "2 yr",
+                 step = "year",
+                 stepmode = "backward"),
+               list(step = "all"))),
+           rangeslider = list(type = "date")
+         ),
+         yaxis = list(
+           title = "demand",
+           autorange = TRUE,
+           autotick = TRUE,
+           showgrid = FALSE,
+           tickmode = "auto",
+           ticks = "inside",
+           rangemode = "tozero"
+         )
+  )
+plotToolBForecast
+
+
+# Tool C
+forecastDataC = select(monthlyDataC, date, demand) %>% head(24) %>% rename(train = demand) %>% 
+  full_join(select(cN1EnsembleData, date, demand.actual) %>% rename(actual = demand.actual), by = c("date" = "date")) %>%
+  full_join(select(cN1EnsembleData, date, ensemble.pred) %>% rename(pred1m = ensemble.pred), by = c("date" = "date")) %>%
+  full_join(select(cN2EnsembleData, date, ensemble.pred) %>% rename(pred2m = ensemble.pred), by = c("date" = "date")) %>%
+  full_join(select(cN3EnsembleData, date, ensemble.pred) %>% rename(pred3m = ensemble.pred), by = c("date" = "date"))
+
+# Interpolate points for smooth ploting
+forecastDataC[24,3:4] <- forecastDataC[24,2]
+forecastDataC[25,5] <- forecastDataC[25,3]
+forecastDataC[26,6] <- forecastDataC[26,3]
+
+plotToolCForecast <- plot_ly(data = forecastDataC, x=~date, type = 'scatter', hoverinfo = "name+x+y",
+                             y=~train, name = 'Training window', mode = 'lines+markers', line = list(color = "rgb(31, 119, 180)", width = 4, dash = 'solid'), marker = list(size=8)) %>%
+  add_trace(y = ~actual, name = 'Actual demand', mode = 'lines+markers', line = list(color = "rgb(148,103,189)", width = 4, dash = 'solid')) %>%
+  add_trace(y = ~pred3m, name = '3 Month Forecast', mode = 'lines+markers', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot'), marker = list(size=6)) %>%
+  add_trace(y = ~pred2m, name = '2 Month Forecast', mode = 'lines+markers', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot'), marker = list(size=6)) %>%
+  add_trace(y = ~pred1m, name = '1 Month Forecast', mode = 'lines+markers', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot'), marker = list(size=6)) %>%
+  layout(title = "Tool C Demand Forecast",
+         xaxis = list(
+           title = "",
+           hoverformat = "%Y-%m",
+           showgrid = FALSE,
+           tickmode = "auto",
+           ticks = "inside"
+         ),
+         yaxis = list(
+           title = "demand",
+           autorange = TRUE,
+           autotick = TRUE,
+           showgrid = FALSE,
+           tickmode = "auto",
+           ticks = "inside",
+           rangemode = "tozero"
+         )
+  )
+
+plotToolCForecast
+
+
+
+
 
 
 # Calculate Difference
@@ -428,14 +590,11 @@ write.csv(monthlyDiffMeanStd, file = "./Results/dailyDiffMeanStd.csv")
 
 
 # TODO:
+# Show the story of model selection
 # Build function for random forest, could work for tool B
 # Calculate forecast differences againt daily demand of each tool and compute the mean and standard deviation
 # Box plot forecast difference
 # Check normal distribution of daily diff
 # Create Heat map of means and std of forecast differences
-# Time series plot of 1 months/2 months/3 months
-
-
-
 
 
