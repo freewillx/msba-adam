@@ -1,6 +1,6 @@
 library(stringr)
 library(zoo)
-
+library(dplyr)
 ###### Load Data ######
 #' Load raw data
 #' @return time series data: "date" "us.price" "us.rig" "us.prod" "tool.a" "tool.b" "tool.c"
@@ -25,9 +25,11 @@ monthlyDataA = monthlyFeaturesTbl %>% select(-starts_with("tool.b")) %>% select(
 monthlyDataB = monthlyFeaturesTbl %>% select(-starts_with("tool.a")) %>% select(-starts_with("tool.c")) %>% rename(demand = tool.b)
 monthlyDataC = monthlyFeaturesTbl %>% select(-starts_with("tool.a")) %>% select(-starts_with("tool.b")) %>% rename(demand = tool.c)
 
+write.csv(monthlyDataA, "./Results/Forecast/A-Monthly-Raw.csv")
+write.csv(monthlyDataB, "./Results/Forecast/B-Monthly-Raw.csv")
+write.csv(monthlyDataC, "./Results/Forecast/C-Monthly-Raw.csv")
 
 ###### Feature Engineering ######
-library(dplyr)
 
 #' A Function to create additional data features to express time series quarterly changes 
 #' @param monthlyData: date, us.price, us.rig, us.prod, demand
@@ -264,163 +266,19 @@ cN3EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 3)
 # cN3EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 3, modelMethod = "SVM")
 
 
-
-######  Time series plot of 1 months/2 months/3 months forecast ###### 
-library(plotly)
-
-# Tool A
-forecastDataA = select(monthlyDataA, date, demand) %>% head(24) %>% rename(train = demand) %>% 
-  full_join(select(aN1EnsembleData, date, demand.actual) %>% rename(actual = demand.actual), by = c("date" = "date")) %>%
-  full_join(select(aN1EnsembleData, date, ensemble.pred) %>% rename(pred1m = ensemble.pred), by = c("date" = "date")) %>%
-  full_join(select(aN2EnsembleData, date, ensemble.pred) %>% rename(pred2m = ensemble.pred), by = c("date" = "date")) %>%
-  full_join(select(aN3EnsembleData, date, ensemble.pred) %>% rename(pred3m = ensemble.pred), by = c("date" = "date"))
-
-# Interpolate points for smooth ploting
-forecastDataA[24,3:4] <- forecastDataA[24,2]
-forecastDataA[25,5] <- forecastDataA[25,3]
-forecastDataA[26,6] <- forecastDataA[26,3]
-
-plotToolAForecast <- plot_ly(data = forecastDataA, x=~date, hoverinfo = "name+x+y") %>%
-  add_lines(y = ~train, name = 'Training window', line = list(color = "rgb(31, 119, 180)", width = 4, dash = 'dashdot')) %>%
-  add_lines(y = ~actual, name = 'Actual demand', line = list(color = "rgb(31, 119, 180)", width = 4, dash = 'solid')) %>%
-  add_lines(y = ~pred3m, name = '3 Month Forecast', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~pred2m, name = '2 Month Forecast', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~pred1m, name = '1 Month Forecast', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
-  layout(title = "Tool A Demand Forecast",
-         xaxis = list(
-           title = "",
-           hoverformat = "%Y-%m",
-           showgrid = FALSE,
-           tickmode = "auto",
-           ticks = "inside",
-           rangeselector = list(
-             buttons = list(
-               list(
-                 count = 1,
-                 label = "1 yr",
-                 step = "year",
-                 stepmode = "backward"),
-               list(
-                 count = 2,
-                 label = "2 yr",
-                 step = "year",
-                 stepmode = "backward"),
-               list(step = "all"))),
-           rangeslider = list(type = "date")
-         ),
-         yaxis = list(
-           title = "demand",
-           autorange = TRUE,
-           autotick = TRUE,
-           showgrid = FALSE,
-           tickmode = "auto",
-           ticks = "inside",
-           rangemode = "tozero"
-         ),
-         shapes = list(
-           list(type = "rect",
-                fillcolor = "grey", line = list(color = "grey"), opacity = 0.1,
-                x0 = forecastDataA$date[1], x1 = forecastDataA$date[24], xref = "x",
-                y0 = 0, y1 = max(na.omit(forecastDataA$train)) + 2, yref = "y"))
-  )
-plotToolAForecast
+write.csv(aN1EnsembleData, file = "./Results/Forecast/A-1M-Forecast.csv")
+write.csv(aN2EnsembleData, file = "./Results/Forecast/A-2M-Forecast.csv")
+write.csv(aN3EnsembleData, file = "./Results/Forecast/A-3M-Forecast.csv")
 
 
-# Tool B
-forecastDataB = select(monthlyDataB, date, demand) %>% head(24) %>% rename(train = demand) %>% 
-  full_join(select(bN1EnsembleData, date, demand.actual) %>% rename(actual = demand.actual), by = c("date" = "date")) %>%
-  full_join(select(bN1EnsembleData, date, ensemble.pred) %>% rename(pred1m = ensemble.pred), by = c("date" = "date")) %>%
-  full_join(select(bN2EnsembleData, date, ensemble.pred) %>% rename(pred2m = ensemble.pred), by = c("date" = "date")) %>%
-  full_join(select(bN3EnsembleData, date, ensemble.pred) %>% rename(pred3m = ensemble.pred), by = c("date" = "date"))
-
-# Interpolate points for smooth ploting
-forecastDataB[24,3:4] <- forecastDataB[24,2]
-forecastDataB[25,5] <- forecastDataB[25,3]
-forecastDataB[26,6] <- forecastDataB[26,3]
-
-plotToolBForecast <- plot_ly(data = forecastDataB, x=~date, hoverinfo = "name+x+y") %>%
-  add_lines(y = ~train, name = 'Training window', line = list(color = "rgb(31, 119, 180)", width = 4, dash = 'solid')) %>%
-  add_lines(y = ~actual, name = 'Actual demand', line = list(color = "rgb(148,103,189)", width = 4, dash = 'solid')) %>%
-  add_lines(y = ~pred3m, name = '3 Month Forecast', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~pred2m, name = '2 Month Forecast', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~pred1m, name = '1 Month Forecast', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
-  layout(title = "Tool B Demand Forecast",
-         xaxis = list(
-           title = "",
-           hoverformat = "%Y-%m",
-           showgrid = FALSE,
-           tickmode = "auto",
-           ticks = "inside",
-           rangeselector = list(
-             buttons = list(
-               list(
-                 count = 1,
-                 label = "1 yr",
-                 step = "year",
-                 stepmode = "backward"),
-               list(
-                 count = 2,
-                 label = "2 yr",
-                 step = "year",
-                 stepmode = "backward"),
-               list(step = "all"))),
-           rangeslider = list(type = "date")
-         ),
-         yaxis = list(
-           title = "demand",
-           autorange = TRUE,
-           autotick = TRUE,
-           showgrid = FALSE,
-           tickmode = "auto",
-           ticks = "inside",
-           rangemode = "tozero"
-         )
-  )
-plotToolBForecast
+write.csv(bN1EnsembleData, file = "./Results/Forecast/B-1M-Forecast.csv")
+write.csv(bN2EnsembleData, file = "./Results/Forecast/B-2M-Forecast.csv")
+write.csv(bN3EnsembleData, file = "./Results/Forecast/B-3M-Forecast.csv")
 
 
-# Tool C
-forecastDataC = select(monthlyDataC, date, demand) %>% head(24) %>% rename(train = demand) %>% 
-  full_join(select(cN1EnsembleData, date, demand.actual) %>% rename(actual = demand.actual), by = c("date" = "date")) %>%
-  full_join(select(cN1EnsembleData, date, ensemble.pred) %>% rename(pred1m = ensemble.pred), by = c("date" = "date")) %>%
-  full_join(select(cN2EnsembleData, date, ensemble.pred) %>% rename(pred2m = ensemble.pred), by = c("date" = "date")) %>%
-  full_join(select(cN3EnsembleData, date, ensemble.pred) %>% rename(pred3m = ensemble.pred), by = c("date" = "date"))
-
-# Interpolate points for smooth ploting
-forecastDataC[24,3:4] <- forecastDataC[24,2]
-forecastDataC[25,5] <- forecastDataC[25,3]
-forecastDataC[26,6] <- forecastDataC[26,3]
-
-plotToolCForecast <- plot_ly(data = forecastDataC, x=~date, type = 'scatter', hoverinfo = "name+x+y",
-                             y=~train, name = 'Training window', mode = 'lines+markers', line = list(color = "rgb(31, 119, 180)", width = 4, dash = 'solid'), marker = list(size=8)) %>%
-  add_trace(y = ~actual, name = 'Actual demand', mode = 'lines+markers', line = list(color = "rgb(148,103,189)", width = 4, dash = 'solid')) %>%
-  add_trace(y = ~pred3m, name = '3 Month Forecast', mode = 'lines+markers', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot'), marker = list(size=6)) %>%
-  add_trace(y = ~pred2m, name = '2 Month Forecast', mode = 'lines+markers', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot'), marker = list(size=6)) %>%
-  add_trace(y = ~pred1m, name = '1 Month Forecast', mode = 'lines+markers', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot'), marker = list(size=6)) %>%
-  layout(title = "Tool C Demand Forecast",
-         xaxis = list(
-           title = "",
-           hoverformat = "%Y-%m",
-           showgrid = FALSE,
-           tickmode = "auto",
-           ticks = "inside"
-         ),
-         yaxis = list(
-           title = "demand",
-           autorange = TRUE,
-           autotick = TRUE,
-           showgrid = FALSE,
-           tickmode = "auto",
-           ticks = "inside",
-           rangemode = "tozero"
-         )
-  )
-
-plotToolCForecast
-
-
-
-
+write.csv(cN1EnsembleData, file = "./Results/Forecast/C-1M-Forecast.csv")
+write.csv(cN2EnsembleData, file = "./Results/Forecast/C-2M-Forecast.csv")
+write.csv(cN3EnsembleData, file = "./Results/Forecast/C-3M-Forecast.csv")
 
 
 # Calculate Difference
@@ -446,8 +304,7 @@ CalculateRMSE <- function(predictedData){
     halfAnnualModel = sqrt( sum( (predictedData$demand.actual - predictedData$half.annual.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
     annualModel = sqrt( sum( (predictedData$demand.actual - predictedData$annual.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
     ensembleModel = sqrt( sum( (predictedData$demand.actual - predictedData$ensemble.pred)^2 , na.rm = TRUE ) / nrow(predictedData) )
-    )
-  
+  )
   return(rmseCompare)
 }
 
@@ -464,137 +321,3 @@ rmseResults <- rbind(rmseResults, cbind(data.frame(tool="C", forecastMonth=2), C
 rmseResults <- rbind(rmseResults, cbind(data.frame(tool="C", forecastMonth=3), CalculateRMSE(cN3EnsembleData)))
 
 write.csv(rmseResults, file = "./Results/RMSE.csv")
-
-
-###### Generate Data For Phase 3 Simulations - Monthly Demand Data ######
-# Tool A
-aDiffMeanStd <- data.frame(tool="A", forecastMonth=1, 
-                             mean=mean(aN1EnsembleData$monthly.diff, na.rm = TRUE), 
-                             std=sd(aN1EnsembleData$monthly.diff, na.rm = TRUE))
-
-aDiffMeanStd <- rbind(aDiffMeanStd, data.frame(tool="A", forecastMonth=2, 
-                                  mean=mean(aN2EnsembleData$monthly.diff, na.rm = TRUE), 
-                                  std=sd(aN2EnsembleData$monthly.diff, na.rm = TRUE)))
-
-aDiffMeanStd <- rbind(aDiffMeanStd, data.frame(tool="A", forecastMonth=3, 
-                                  mean=mean(aN3EnsembleData$monthly.diff, na.rm = TRUE), 
-                                  std=sd(aN3EnsembleData$monthly.diff, na.rm = TRUE)))
-
-# Tool B
-bDiffMeanStd <- data.frame(tool="B", forecastMonth=1, 
-                              mean=mean(bN1EnsembleData$monthly.diff, na.rm = TRUE), 
-                              std=sd(bN1EnsembleData$monthly.diff, na.rm = TRUE))
-
-bDiffMeanStd <- rbind(bDiffMeanStd, data.frame(tool="B", forecastMonth=2, 
-                                                     mean=mean(bN2EnsembleData$monthly.diff, na.rm = TRUE), 
-                                                     std=sd(bN2EnsembleData$monthly.diff, na.rm = TRUE)))
-
-bDiffMeanStd <- rbind(bDiffMeanStd, data.frame(tool="B", forecastMonth=3, 
-                                                     mean=mean(bN3EnsembleData$monthly.diff, na.rm = TRUE), 
-                                                     std=sd(bN3EnsembleData$monthly.diff, na.rm = TRUE)))
-
-# Tool C
-cDiffMeanStd <- data.frame(tool="C", forecastMonth=1, 
-                              mean=mean(cN1EnsembleData$monthly.diff, na.rm = TRUE), 
-                              std=sd(cN1EnsembleData$monthly.diff, na.rm = TRUE))
-
-cDiffMeanStd <- rbind(cDiffMeanStd, data.frame(tool="C", forecastMonth=2, 
-                                                     mean=mean(cN2EnsembleData$monthly.diff, na.rm = TRUE), 
-                                                     std=sd(cN2EnsembleData$monthly.diff, na.rm = TRUE)))
-
-cDiffMeanStd <- rbind(cDiffMeanStd, data.frame(tool="C", forecastMonth=3, 
-                                                     mean=mean(cN3EnsembleData$monthly.diff, na.rm = TRUE), 
-                                                     std=sd(cN3EnsembleData$monthly.diff, na.rm = TRUE)))
-
-monthlyDiffMeanStd <- rbind(aDiffMeanStd,bDiffMeanStd,cDiffMeanStd)
-
-write.csv(monthlyDiffMeanStd, file = "./Results/monthlyDiffMeanStd.csv")
-
-
-###### Generate Data For Phase 3 Simulations - Daily Demand Data ######
-
-dailyDemandA <- tbl_df(LoadMultivariateTimeSeries("./Data/toola_dd.csv")) %>% rename(demand = toola.dd)
-dailyDemandA$month=floor_date(dailyDemandA$date, unit = "month")
-# Exclude March 2016 Data due to data quality issue
-dailyDemandA <- dailyDemandA %>% filter(month != as.Date("2016-03-01"))
-aN1dailyDemand <- na.omit(left_join(dailyDemandA, select(aN1EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
-aN2dailyDemand <- na.omit(left_join(dailyDemandA, select(aN2EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
-aN3dailyDemand <- na.omit(left_join(dailyDemandA, select(aN3EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
-
-dailyDemandB <- tbl_df(LoadMultivariateTimeSeries("./Data/toolb_dd.csv")) %>% rename(demand = toolb.dd)
-dailyDemandB$month=floor_date(dailyDemandB$date, unit = "month")
-# Exclude March 2016 Data due to data quality issue
-dailyDemandB <- dailyDemandB %>% filter(month != as.Date("2016-03-01"))
-bN1dailyDemand <- na.omit(left_join(dailyDemandB, select(bN1EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
-bN2dailyDemand <- na.omit(left_join(dailyDemandB, select(bN2EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
-bN3dailyDemand <- na.omit(left_join(dailyDemandB, select(bN3EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
-
-dailyDemandC <- tbl_df(LoadMultivariateTimeSeries("./Data/toolc_dd.csv")) %>% rename(demand = toolc.dd)
-dailyDemandC$month=floor_date(dailyDemandC$date, unit = "month")
-# Exclude March 2016 Data due to data quality issue
-dailyDemandC <- dailyDemandC %>% filter(month != as.Date("2016-03-01"))
-cN1dailyDemand <- na.omit(left_join(dailyDemandC, select(cN1EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
-cN2dailyDemand <- na.omit(left_join(dailyDemandC, select(cN2EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
-cN3dailyDemand <- na.omit(left_join(dailyDemandC, select(cN3EnsembleData, date, ensemble.pred), by = c("month" = "date")) %>% select(-month))
-
-# Calculate Daily Diff
-aN1dailyDemand$diff = aN1dailyDemand$ensemble.pred-aN1dailyDemand$demand
-aN2dailyDemand$diff = aN2dailyDemand$ensemble.pred-aN2dailyDemand$demand
-aN3dailyDemand$diff = aN3dailyDemand$ensemble.pred-aN3dailyDemand$demand
-
-bN1dailyDemand$diff = bN1dailyDemand$ensemble.pred-bN1dailyDemand$demand
-bN2dailyDemand$diff = bN2dailyDemand$ensemble.pred-bN2dailyDemand$demand
-bN3dailyDemand$diff = bN3dailyDemand$ensemble.pred-bN3dailyDemand$demand
-
-cN1dailyDemand$diff = cN1dailyDemand$ensemble.pred-cN1dailyDemand$demand
-cN2dailyDemand$diff = cN2dailyDemand$ensemble.pred-cN2dailyDemand$demand
-cN3dailyDemand$diff = cN3dailyDemand$ensemble.pred-cN3dailyDemand$demand
-
-
-# Tool A
-aDiffMeanStd <- data.frame(tool="A", forecastMonth=1, 
-                           mean=mean(aN1dailyDemand$diff), std=sd(aN1dailyDemand$diff))
-
-aDiffMeanStd <- rbind(aDiffMeanStd, data.frame(tool="A", forecastMonth=2, 
-                                               mean=mean(aN2dailyDemand$diff), std=sd(aN2dailyDemand$diff)))
-
-aDiffMeanStd <- rbind(aDiffMeanStd, data.frame(tool="A", forecastMonth=3, 
-                                               mean=mean(aN3dailyDemand$diff), std=sd(aN3dailyDemand$diff)))
-
-# Tool B
-bDiffMeanStd <- data.frame(tool="B", forecastMonth=1, 
-                           mean=mean(bN1dailyDemand$diff), std=sd(bN1dailyDemand$diff))
-
-bDiffMeanStd <- rbind(bDiffMeanStd, data.frame(tool="B", forecastMonth=2, 
-                                               mean=mean(bN2dailyDemand$diff), std=sd(bN2dailyDemand$diff)))
-
-bDiffMeanStd <- rbind(bDiffMeanStd, data.frame(tool="B", forecastMonth=3, 
-                                               mean=mean(bN3dailyDemand$diff), std=sd(bN3dailyDemand$diff)))
-
-# Tool C
-cDiffMeanStd <- data.frame(tool="C", forecastMonth=1, 
-                           mean=mean(cN1dailyDemand$diff), std=sd(cN1dailyDemand$diff))
-
-cDiffMeanStd <- rbind(cDiffMeanStd, data.frame(tool="C", forecastMonth=2, 
-                                               mean=mean(cN2dailyDemand$diff), std=sd(cN2dailyDemand$diff)))
-
-cDiffMeanStd <- rbind(cDiffMeanStd, data.frame(tool="C", forecastMonth=3, 
-                                               mean=mean(cN3dailyDemand$diff), std=sd(cN3dailyDemand$diff)))
-
-dailyDiffMeanStd <- rbind(aDiffMeanStd,bDiffMeanStd,cDiffMeanStd)
-
-write.csv(monthlyDiffMeanStd, file = "./Results/dailyDiffMeanStd.csv")
-
-
-
-
-
-# TODO:
-# Show the story of model selection
-# Build function for random forest, could work for tool B
-# Calculate forecast differences againt daily demand of each tool and compute the mean and standard deviation
-# Box plot forecast difference
-# Check normal distribution of daily diff
-# Create Heat map of means and std of forecast differences
-
-
