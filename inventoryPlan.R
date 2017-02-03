@@ -143,12 +143,12 @@ dailyDemandA$monthly.stock.f3 = dailyDemandA$forecast + dailyDemandA$monthly.dif
 plotToolAPlan <- plot_ly(data = dailyDemandA, x=~date) %>%
   add_lines(y = ~daily.demand, name = 'daily demand', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'solid')) %>%
   add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(148, 103, 189)", width = 2, dash = 'dashdot')) %>%
-  # add_lines(y = ~daily.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~daily.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~daily.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~daily.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~daily.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~daily.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
   layout(
     xaxis = list(
       title = "",
@@ -194,12 +194,12 @@ dailyDemandB$monthly.stock.f3 = dailyDemandB$forecast + dailyDemandB$monthly.dif
 plotToolBPlan <- plot_ly(data = dailyDemandB, x=~date) %>%
   add_lines(y = ~daily.demand, name = 'daily demand', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'solid')) %>%
   add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(148, 103, 189)", width = 2, dash = 'dashdot')) %>%
-  # add_lines(y = ~daily.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~daily.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~daily.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~daily.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~daily.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~daily.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
   layout(
     xaxis = list(
       title = "",
@@ -246,12 +246,12 @@ dailyDemandC$monthly.stock.f3 = dailyDemandC$forecast + dailyDemandC$monthly.dif
 plotToolCPlan <- plot_ly(data = dailyDemandC, x=~date) %>%
   add_lines(y = ~daily.demand, name = 'daily demand', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'solid')) %>%
   add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(148, 103, 189)", width = 2, dash = 'dashdot')) %>%
-  # add_lines(y = ~daily.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~daily.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~daily.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~daily.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~daily.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~daily.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
   layout(
     xaxis = list(
       title = "",
@@ -295,6 +295,8 @@ plotToolCPlan
 # Plot forecast vs daily demand and differences
 
 
-# plotly_POST(plotToolCPlan, filename = "toolAPlan")
+# Sys.setenv("plotly_username"="wyhzhang")
+# Sys.setenv("plotly_api_key"="sRqGpBFlPtzcoJ764EqD")
+# plotly_POST(plotToolAPlan, filename = "toolAPlan")
 # plotly_POST(plotToolBPlan, filename = "toolBPlan")
 # plotly_POST(plotToolCPlan, filename = "toolCPlan")
