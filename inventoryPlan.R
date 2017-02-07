@@ -37,80 +37,97 @@ dailyDemandC <- tbl_df(LoadMultivariateTimeSeries("./Data/toolc_dd.csv")) %>% re
 
 
 ###### Data Processing - Calculate demand difference and std of difference ######
-histTimeWindow = 30
 
 # Tool A
 dailyDemandA$month=floor_date(dailyDemandA$date, unit = "month")
-dailyDemandA <- full_join(dailyDemandA, select(a1MForecast, date, forecast), by = c("month" = "date"))
-dailyDemandA$diff = dailyDemandA$forecast - dailyDemandA$daily.demand
+
+# Monthly average
+dailyDemandA <- full_join(dailyDemandA,
+                          summarise(group_by(dailyDemandA, month), monthly.avg=mean(daily.demand)),
+                          by = c("month" = "month"))
+# Daily difference from monthly average
+dailyDemandA$avg.diff <- dailyDemandA$monthly.avg - dailyDemandA$daily.demand
 
 # Exclude March 2016 Data due to data quality issue
 dailyDemandA <- dailyDemandA %>% filter(month != as.Date("2016-03-01"))
 
-# Calculate monthly standard deviation
-a1MDiffStd <- summarise(group_by(na.omit(dailyDemandA), month), sd=sd(diff)) %>% mutate(monthly.diff.sd = lag(sd, n = 1))
-dailyDemandA <- full_join(dailyDemandA, 
-                          select(a1MDiffStd, month, monthly.diff.sd), 
-                          by = c("month" = "month"))
+# Standard deviation of daily difference from monthly average
+dailyDemandA <- full_join(dailyDemandA,
+                          summarise(group_by(dailyDemandA, month), avg.diff.sd=sd(avg.diff)) %>%
+                            mutate(prev.diff.sd = lag(avg.diff.sd, n = 1)),
+                                     by = c("month" = "month"))
 
-# Calculate 30 days rolling standard deviation
-dailyDemandA <- dailyDemandA %>%
-  mutate(rolling.diff.sd = rollapply(data = diff, width = histTimeWindow, FUN = sd, align = "right", fill = NA))
+# Monthly average forecast
+dailyDemandA <- full_join(dailyDemandA, select(a1MForecast, date, forecast), by = c("month" = "date"))
+
+
 
 
 # Tool B
 dailyDemandB$month=floor_date(dailyDemandB$date, unit = "month")
-dailyDemandB <- full_join(dailyDemandB, select(b1MForecast, date, forecast), by = c("month" = "date"))
-dailyDemandB$diff = dailyDemandB$forecast - dailyDemandB$daily.demand
+
+# Monthly average
+dailyDemandB <- full_join(dailyDemandB,
+                          summarise(group_by(dailyDemandB, month), monthly.avg=mean(daily.demand)),
+                          by = c("month" = "month"))
+# Daily difference from monthly average
+dailyDemandB$avg.diff <- dailyDemandB$monthly.avg - dailyDemandB$daily.demand
 
 # Exclude March 2016 Data due to data quality issue
 dailyDemandB <- dailyDemandB %>% filter(month != as.Date("2016-03-01"))
 
-# Calculate monthly standard deviation
-b1MDiffStd <- summarise(group_by(na.omit(dailyDemandB), month), sd=sd(diff)) %>% mutate(monthly.diff.sd = lag(sd, n = 1))
-dailyDemandB <- full_join(dailyDemandB, 
-                          select(b1MDiffStd, month, monthly.diff.sd), 
+# Standard deviation of daily difference from monthly average
+dailyDemandB <- full_join(dailyDemandB,
+                          summarise(group_by(dailyDemandB, month), avg.diff.sd=sd(avg.diff)) %>%
+                            mutate(prev.diff.sd = lag(avg.diff.sd, n = 1)),
                           by = c("month" = "month"))
 
-# Calculate 30 days rolling standard deviation
-dailyDemandB <- dailyDemandB %>%
-  mutate(rolling.diff.sd = rollapply(data = diff, width = histTimeWindow, FUN = sd, align = "right", fill = NA))
+# Monthly average forecast
+dailyDemandB <- full_join(dailyDemandB, select(b1MForecast, date, forecast), by = c("month" = "date"))
+
+
 
 
 # Tool C
 dailyDemandC$month=floor_date(dailyDemandC$date, unit = "month")
-dailyDemandC <- full_join(dailyDemandC, select(c1MForecast, date, forecast), by = c("month" = "date"))
-dailyDemandC$diff = dailyDemandC$forecast - dailyDemandC$daily.demand
+
+# Monthly average
+dailyDemandC <- full_join(dailyDemandC,
+                          summarise(group_by(dailyDemandC, month), monthly.avg=mean(daily.demand)),
+                          by = c("month" = "month"))
+# Daily difference from monthly average
+dailyDemandC$avg.diff <- dailyDemandC$monthly.avg - dailyDemandC$daily.demand
 
 # Exclude March 2016 Data due to data quality issue
 dailyDemandC <- dailyDemandC %>% filter(month != as.Date("2016-03-01"))
 
-# Calculate monthly standard deviation
-c1MDiffStd <- summarise(group_by(na.omit(dailyDemandC), month), sd=sd(diff)) %>% mutate(monthly.diff.sd = lag(sd, n = 1))
-dailyDemandC <- full_join(dailyDemandC, 
-                          select(c1MDiffStd, month, monthly.diff.sd), 
+# Standard deviation of daily difference from monthly average
+dailyDemandC <- full_join(dailyDemandC,
+                          summarise(group_by(dailyDemandC, month), avg.diff.sd=sd(avg.diff)) %>%
+                            mutate(prev.diff.sd = lag(avg.diff.sd, n = 1)),
                           by = c("month" = "month"))
 
-# Calculate 30 days rolling standard deviation
-dailyDemandC <- dailyDemandC %>%
-  mutate(rolling.diff.sd = rollapply(data = diff, width = histTimeWindow, FUN = sd, align = "right", fill = NA))
+# Monthly average forecast
+dailyDemandC <- full_join(dailyDemandC, select(c1MForecast, date, forecast), by = c("month" = "date"))
+
+
 
 
 ######  Normality check ######
-hist(dailyDemandA$diff)
-qqnorm(dailyDemandA$diff)
-shapiro.test(dailyDemandA$diff)
-sd(na.omit(dailyDemandA$diff))
+hist(dailyDemandA$avg.diff)
+qqnorm(dailyDemandA$avg.diff)
+shapiro.test(dailyDemandA$avg.diff)
+sd(na.omit(dailyDemandA$avg.diff))
 
-hist(dailyDemandB$diff)
-qqnorm(dailyDemandB$diff)
-shapiro.test(dailyDemandB$diff)
-sd(na.omit(dailyDemandB$diff))
+hist(dailyDemandB$avg.diff)
+qqnorm(dailyDemandB$avg.diff)
+shapiro.test(dailyDemandB$avg.diff)
+sd(na.omit(dailyDemandB$avg.diff))
 
-hist(dailyDemandC$diff)
-qqnorm(dailyDemandC$diff)
-shapiro.test(dailyDemandC$diff)
-sd(na.omit(dailyDemandC$diff))
+hist(dailyDemandC$avg.diff)
+qqnorm(dailyDemandC$avg.diff)
+shapiro.test(dailyDemandC$avg.diff)
+sd(na.omit(dailyDemandC$avg.diff))
 
 
 ######  TODO Heatmap for choice of factor ######
@@ -129,26 +146,29 @@ factorC3 = 2.5
 
 
 ######  Inventory Planning ######
-histTimeWindow = 30
 
 # Tool A
-dailyDemandA$daily.stock.f1 = dailyDemandA$forecast + dailyDemandA$rolling.diff.sd * factorA1
-dailyDemandA$daily.stock.f2 = dailyDemandA$forecast + dailyDemandA$rolling.diff.sd * factorA2
-dailyDemandA$daily.stock.f3 = dailyDemandA$forecast + dailyDemandA$rolling.diff.sd * factorA3
+dailyDemandA$monthly.stock.f1 = dailyDemandA$monthly.avg + dailyDemandA$prev.diff.sd * factorA1
+dailyDemandA <- dailyDemandA %>% mutate(monthly.stock.f1 = ifelse(month > as.Date("2015-01-01"), NA, monthly.stock.f1))
+dailyDemandA$stock.fc.f1 = dailyDemandA$forecast + dailyDemandA$prev.diff.sd * factorA1
 
-dailyDemandA$monthly.stock.f1 = dailyDemandA$forecast + dailyDemandA$monthly.diff.sd * factorA1
-dailyDemandA$monthly.stock.f2 = dailyDemandA$forecast + dailyDemandA$monthly.diff.sd * factorA2
-dailyDemandA$monthly.stock.f3 = dailyDemandA$forecast + dailyDemandA$monthly.diff.sd * factorA3
+dailyDemandA$monthly.stock.f2 = dailyDemandA$monthly.avg + dailyDemandA$prev.diff.sd * factorA2
+dailyDemandA <- dailyDemandA %>% mutate(monthly.stock.f2 = ifelse(month > as.Date("2015-01-01"), NA, monthly.stock.f2))
+dailyDemandA$stock.fc.f2 = dailyDemandA$forecast + dailyDemandA$prev.diff.sd * factorA2
+
+dailyDemandA$monthly.stock.f3 = dailyDemandA$monthly.avg + dailyDemandA$prev.diff.sd * factorA3
+dailyDemandA <- dailyDemandA %>% mutate(monthly.stock.f3 = ifelse(month > as.Date("2015-01-01"), NA, monthly.stock.f3))
+dailyDemandA$stock.fc.f3 = dailyDemandA$forecast + dailyDemandA$prev.diff.sd * factorA3
 
 plotToolAPlan <- plot_ly(data = dailyDemandA, x=~date) %>%
   add_lines(y = ~daily.demand, name = 'daily demand', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'solid')) %>%
   add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(148, 103, 189)", width = 2, dash = 'dashdot')) %>%
-  add_lines(y = ~daily.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~daily.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~daily.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~stock.fc.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~stock.fc.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~stock.fc.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
   layout(
     xaxis = list(
       title = "",
@@ -177,29 +197,38 @@ plotToolAPlan <- plot_ly(data = dailyDemandA, x=~date) %>%
       tickmode = "auto",
       ticks = "outside",
       rangemode = "tozero"
-    )
+    ),
+    shapes = list(
+      list(type = "rect",
+           fillcolor = "grey", line = list(color = "grey"), opacity = 0.1,
+           x0 = as.Date("2013-01-01"), x1 = as.Date("2015-01-01"), xref = "x",
+           y0 = 0, y1 = max(dailyDemandA$daily.demand, na.rm = TRUE) + 2, yref = "y"))
   )
 plotToolAPlan
 
 
 # Tool B
-dailyDemandB$daily.stock.f1 = dailyDemandB$forecast + dailyDemandB$rolling.diff.sd * factorB1
-dailyDemandB$daily.stock.f2 = dailyDemandB$forecast + dailyDemandB$rolling.diff.sd * factorB2
-dailyDemandB$daily.stock.f3 = dailyDemandB$forecast + dailyDemandB$rolling.diff.sd * factorB3
+dailyDemandB$monthly.stock.f1 = dailyDemandB$monthly.avg + dailyDemandB$prev.diff.sd * factorA1
+dailyDemandB <- dailyDemandB %>% mutate(monthly.stock.f1 = ifelse(month > as.Date("2015-01-01"), NA, monthly.stock.f1))
+dailyDemandB$stock.fc.f1 = dailyDemandB$forecast + dailyDemandB$prev.diff.sd * factorA1
 
-dailyDemandB$monthly.stock.f1 = dailyDemandB$forecast + dailyDemandB$monthly.diff.sd * factorB1
-dailyDemandB$monthly.stock.f2 = dailyDemandB$forecast + dailyDemandB$monthly.diff.sd * factorB2
-dailyDemandB$monthly.stock.f3 = dailyDemandB$forecast + dailyDemandB$monthly.diff.sd * factorB3
+dailyDemandB$monthly.stock.f2 = dailyDemandB$monthly.avg + dailyDemandB$prev.diff.sd * factorA2
+dailyDemandB <- dailyDemandB %>% mutate(monthly.stock.f2 = ifelse(month > as.Date("2015-01-01"), NA, monthly.stock.f2))
+dailyDemandB$stock.fc.f2 = dailyDemandB$forecast + dailyDemandB$prev.diff.sd * factorA2
+
+dailyDemandB$monthly.stock.f3 = dailyDemandB$monthly.avg + dailyDemandB$prev.diff.sd * factorA3
+dailyDemandB <- dailyDemandB %>% mutate(monthly.stock.f3 = ifelse(month > as.Date("2015-01-01"), NA, monthly.stock.f3))
+dailyDemandB$stock.fc.f3 = dailyDemandB$forecast + dailyDemandB$prev.diff.sd * factorA3
 
 plotToolBPlan <- plot_ly(data = dailyDemandB, x=~date) %>%
   add_lines(y = ~daily.demand, name = 'daily demand', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'solid')) %>%
   add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(148, 103, 189)", width = 2, dash = 'dashdot')) %>%
-  add_lines(y = ~daily.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~daily.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~daily.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~stock.fc.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~stock.fc.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~stock.fc.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
   layout(
     xaxis = list(
       title = "",
@@ -228,30 +257,39 @@ plotToolBPlan <- plot_ly(data = dailyDemandB, x=~date) %>%
       tickmode = "auto",
       ticks = "outside",
       rangemode = "tozero"
-    )
+    ),
+    shapes = list(
+      list(type = "rect",
+           fillcolor = "grey", line = list(color = "grey"), opacity = 0.1,
+           x0 = as.Date("2013-01-01"), x1 = as.Date("2015-01-01"), xref = "x",
+           y0 = 0, y1 = max(dailyDemandB$daily.demand, na.rm = TRUE) + 2, yref = "y"))
   )
 plotToolBPlan
 
 
 
 # Tool C
-dailyDemandC$daily.stock.f1 = dailyDemandC$forecast + dailyDemandC$rolling.diff.sd * factorC1
-dailyDemandC$daily.stock.f2 = dailyDemandC$forecast + dailyDemandC$rolling.diff.sd * factorC2
-dailyDemandC$daily.stock.f3 = dailyDemandC$forecast + dailyDemandC$rolling.diff.sd * factorC3
+dailyDemandC$monthly.stock.f1 = dailyDemandC$monthly.avg + dailyDemandC$prev.diff.sd * factorA1
+dailyDemandC <- dailyDemandC %>% mutate(monthly.stock.f1 = ifelse(month > as.Date("2015-01-01"), NA, monthly.stock.f1))
+dailyDemandC$stock.fc.f1 = dailyDemandC$forecast + dailyDemandC$prev.diff.sd * factorA1
 
-dailyDemandC$monthly.stock.f1 = dailyDemandC$forecast + dailyDemandC$monthly.diff.sd * factorC1
-dailyDemandC$monthly.stock.f2 = dailyDemandC$forecast + dailyDemandC$monthly.diff.sd * factorC2
-dailyDemandC$monthly.stock.f3 = dailyDemandC$forecast + dailyDemandC$monthly.diff.sd * factorC3
+dailyDemandC$monthly.stock.f2 = dailyDemandC$monthly.avg + dailyDemandC$prev.diff.sd * factorA2
+dailyDemandC <- dailyDemandC %>% mutate(monthly.stock.f2 = ifelse(month > as.Date("2015-01-01"), NA, monthly.stock.f2))
+dailyDemandC$stock.fc.f2 = dailyDemandC$forecast + dailyDemandC$prev.diff.sd * factorA2
+
+dailyDemandC$monthly.stock.f3 = dailyDemandC$monthly.avg + dailyDemandC$prev.diff.sd * factorA3
+dailyDemandC <- dailyDemandC %>% mutate(monthly.stock.f3 = ifelse(month > as.Date("2015-01-01"), NA, monthly.stock.f3))
+dailyDemandC$stock.fc.f3 = dailyDemandC$forecast + dailyDemandC$prev.diff.sd * factorA3
 
 plotToolCPlan <- plot_ly(data = dailyDemandC, x=~date) %>%
   add_lines(y = ~daily.demand, name = 'daily demand', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'solid')) %>%
   add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(148, 103, 189)", width = 2, dash = 'dashdot')) %>%
-  add_lines(y = ~daily.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~daily.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~daily.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~stock.fc.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~stock.fc.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~stock.fc.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
   layout(
     xaxis = list(
       title = "",
@@ -280,7 +318,12 @@ plotToolCPlan <- plot_ly(data = dailyDemandC, x=~date) %>%
       tickmode = "auto",
       ticks = "outside",
       rangemode = "tozero"
-    )
+    ),
+    shapes = list(
+      list(type = "rect",
+           fillcolor = "grey", line = list(color = "grey"), opacity = 0.1,
+           x0 = as.Date("2013-01-01"), x1 = as.Date("2015-01-01"), xref = "x",
+           y0 = 0, y1 = max(dailyDemandC$daily.demand, na.rm = TRUE) + 2, yref = "y"))
   )
 plotToolCPlan
 
