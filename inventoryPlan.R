@@ -162,10 +162,10 @@ dailyDemandA$stock.fc.f3 = dailyDemandA$forecast + dailyDemandA$prev.diff.sd * f
 
 plotToolAPlan <- plot_ly(data = dailyDemandA, x=~date) %>%
   add_lines(y = ~daily.demand, name = 'daily demand', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'solid')) %>%
-  add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(148, 103, 189)", width = 2, dash = 'dashdot')) %>%
-  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(0, 0, 0)", width = 3, dash = 'dashdot')) %>%
+  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'longdashdot')) %>%
+  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'longdashdot')) %>%
+  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'longdashdot')) %>%
   add_lines(y = ~stock.fc.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
   add_lines(y = ~stock.fc.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
   # add_lines(y = ~stock.fc.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
@@ -222,10 +222,10 @@ dailyDemandB$stock.fc.f3 = dailyDemandB$forecast + dailyDemandB$prev.diff.sd * f
 
 plotToolBPlan <- plot_ly(data = dailyDemandB, x=~date) %>%
   add_lines(y = ~daily.demand, name = 'daily demand', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'solid')) %>%
-  add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(148, 103, 189)", width = 2, dash = 'dashdot')) %>%
-  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(0, 0, 0)", width = 3, dash = 'dashdot')) %>%
+  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'longdashdot')) %>%
+  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'longdashdot')) %>%
+  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'longdashdot')) %>%
   add_lines(y = ~stock.fc.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
   add_lines(y = ~stock.fc.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
   add_lines(y = ~stock.fc.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
@@ -283,11 +283,11 @@ dailyDemandC$stock.fc.f3 = dailyDemandC$forecast + dailyDemandC$prev.diff.sd * f
 
 plotToolCPlan <- plot_ly(data = dailyDemandC, x=~date) %>%
   add_lines(y = ~daily.demand, name = 'daily demand', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'solid')) %>%
-  add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(148, 103, 189)", width = 2, dash = 'dashdot')) %>%
-  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
-  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'dot')) %>%
-  add_lines(y = ~stock.fc.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
+  add_lines(y = ~forecast, name = 'forecast', line = list(color = "rgb(0, 0, 0)", width = 3, dash = 'dashdot')) %>%
+  # add_lines(y = ~monthly.stock.f1, name = 'factor 1', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'longdashdot')) %>%
+  add_lines(y = ~monthly.stock.f2, name = 'factor 2', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'longdashdot')) %>%
+  # add_lines(y = ~monthly.stock.f3, name = 'factor 3', line = list(color = "rgb(31, 119, 180)", width = 2, dash = 'longdashdot')) %>%
+  # add_lines(y = ~stock.fc.f1, name = 'factor 1', line = list(color = "rgb(214, 39, 40)", width = 2, dash = 'dot')) %>%
   add_lines(y = ~stock.fc.f2, name = 'factor 2', line = list(color = "rgb(255, 127, 14)", width = 2, dash = 'dot')) %>%
   add_lines(y = ~stock.fc.f3, name = 'factor 3', line = list(color = "rgb(44, 160, 44)", width = 2, dash = 'dot')) %>%
   layout(
