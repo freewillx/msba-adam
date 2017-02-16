@@ -1,7 +1,8 @@
 library(stringr)
 library(zoo)
 library(dplyr)
-###### Load Data ######
+
+############ Load Data ############
 #' Load raw data
 #' @return time series data: "date" "us.price" "us.rig" "us.prod" "tool.a" "tool.b" "tool.c"
 LoadMultivariateTimeSeries <- function(fileName){
@@ -20,304 +21,440 @@ LoadMultivariateTimeSeries <- function(fileName){
   return(tool.demand.data)
 }
 
+
+# Daily data clean up
+library(lubridate)
+
+dailyDataA <- tbl_df(LoadMultivariateTimeSeries("./Data/toola_dd.csv")) %>% rename(daily.demand = toola.dd)
+dailyDataA$month=floor_date(dailyDataA$date, unit = "month")
+# Exclude 2016-03 and other missing data
+dailyDataA <- dailyDataA %>% filter(month != as.Date("2016-03-01")) %>% select(-month) %>% na.omit()
+
+dailyDataB <- tbl_df(LoadMultivariateTimeSeries("./Data/toolb_dd.csv")) %>% rename(daily.demand = toolb.dd)
+dailyDataB$month=floor_date(dailyDataB$date, unit = "month")
+# Exclude 2016-03 and other missing data
+dailyDataB <- dailyDataB %>% filter(month != as.Date("2016-03-01")) %>% select(-month) %>% na.omit()
+
+dailyDataC <- tbl_df(LoadMultivariateTimeSeries("./Data/toolc_dd.csv")) %>% rename(daily.demand = toolc.dd)
+dailyDataC$month=floor_date(dailyDataC$date, unit = "month")
+# Exclude 2016-03 and other missing data
+dailyDataC <- dailyDataC %>% filter(month != as.Date("2016-03-01")) %>% select(-month) %>% na.omit()
+
+write.csv(dailyDataA, "./Results/Processed/A-Daily-Raw.csv", row.names=FALSE)
+write.csv(dailyDataB, "./Results/Processed/B-Daily-Raw.csv", row.names=FALSE)
+write.csv(dailyDataC, "./Results/Processed/C-Daily-Raw.csv", row.names=FALSE)
+
+
+############ Model Evaluation Functions ############
+
+RandomSampleRMSE <- function(forecastDf, sample.size = 300){
+
+  samples = forecastDf[sample((nrow(forecastDf)-30), sample.size),]
+  
+  rmseResult = samples %>% select(date)
+  rmseResult$rmse = NA
+  
+  for (i in 1:nrow(samples)){
+    entry = samples[i,]
+    compare = filter(forecastDf, date >= entry$date)[1:30,1:2]
+    compare$forecast = as.data.frame(t(entry[,3:ncol(entry)]))[,1]
+    rmseResult$rmse[i] = sqrt( mean( (compare$daily.demand - compare$forecast)^2 , na.rm = TRUE ) )
+  }
+  
+  return(rmseResult)
+}
+
+
+############ Baseline Model ############
+# 90 days moving avearge as the forecast of next 30 days
+SlbBaselineForecast <- function(dailyData){
+  forecastDF <- dailyData %>% select(date, daily.demand) %>%
+    mutate(n1.demand = rollmean(x = daily.demand, 90, align = "right", fill = NA)) %>%
+    filter(date >= as.Date("2015-01-01"))
+  
+  # Set the same value for 30 days forecast
+  for (i in 2:30){
+    col.name = paste("n",i,".demand", sep="")
+    forecastDF[[col.name]] <- forecastDF$n1.demand
+  }
+  
+  return(forecastDF)
+}
+
+baselineForecastA <- SlbBaselineForecast(dailyDataA)
+baselineForecastB <- SlbBaselineForecast(dailyDataB)
+baselineForecastC <- SlbBaselineForecast(dailyDataC)
+
+write.csv(baselineForecastA, "./Results/DailyForecast/baselineToolA.csv", row.names=FALSE)
+write.csv(baselineForecastB, "./Results/DailyForecast/baselineToolB.csv", row.names=FALSE)
+write.csv(baselineForecastC, "./Results/DailyForecast/baselineToolC.csv", row.names=FALSE)
+
+# RMSE model performance
+baselineRmseA <- RandomSampleRMSE(baselineForecastA)
+baselineRmseB <- RandomSampleRMSE(baselineForecastB)
+baselineRmseC <- RandomSampleRMSE(baselineForecastC)
+
+write.csv(baselineRmseA, "./Results/Evaluation/baselineRmseA.csv", row.names=FALSE)
+write.csv(baselineRmseB, "./Results/Evaluation/baselineRmseB.csv", row.names=FALSE)
+write.csv(baselineRmseC, "./Results/Evaluation/baselineRmseC.csv", row.names=FALSE)
+
+
+############ Best Possible Model - Future 30 days average ############
+# Use 30 days future moving average as forecast as the best possible model, as if we can see the future for performance comparison
+BestAvgForecast <- function(dailyData){
+  forecastDF <- dailyData %>% select(date, daily.demand) %>%
+    mutate(n1.demand = rollmean(x = daily.demand, 31, align = "left", fill = NA)) %>%
+    filter(date >= as.Date("2015-01-01"))
+  
+  # Set the same value for 30 days forecast
+  for (i in 2:30){
+    col.name = paste("n",i,".demand", sep="")
+    forecastDF[[col.name]] <- forecastDF$n1.demand
+  }
+  
+  return(forecastDF)
+}
+
+bestAvgForecastA <- na.omit(BestAvgForecast(dailyDataA))
+bestAvgForecastB <- na.omit(BestAvgForecast(dailyDataB))
+bestAvgForecastC <- na.omit(BestAvgForecast(dailyDataC))
+
+# RMSE model performance
+bestAvgRmseA <- RandomSampleRMSE(bestAvgForecastA)
+bestAvgRmseB <- RandomSampleRMSE(bestAvgForecastB)
+bestAvgRmseC <- RandomSampleRMSE(bestAvgForecastC)
+
+
+############ ARIMA Model ############
+# Forecast 30 days with Auto ARIMA
+library(forecast)
+
+ArimaForecast <- function(dailyData){
+  
+  forecastDF <- dailyData %>% select(date, daily.demand) %>%
+    filter(date >= as.Date("2015-01-01"))
+  
+  # Add forecast value columns
+  for (i in 1:30){
+    col.name = paste("n",i,".demand", sep="")
+    forecastDF[[col.name]] <- NA
+  }
+  
+  for (i in 1:nrow(forecastDF)){
+    forecastDate = forecastDF$date[i]
+    
+    # Retrieve 180 days of data from the specific forecastDate
+    trainData = dailyData %>% filter(date <= forecastDate) %>% top_n(n = 180, date) %>% select(daily.demand)
+    train_TS <- ts(trainData, frequency = 365)
+    ts_model <- auto.arima(train_TS)
+    
+    # Forecast 30 days
+    ts_forecast <- forecast.Arima(ts_model, h=30)
+    
+    # Fill datafrme with forecast values
+    for (j in 1:30){
+      col.name = paste("n",i,".demand", sep="")
+      forecastDF[[i,(j+2)]] <- ts_forecast$mean[j]
+    }
+  }
+  
+  return(forecastDF)
+}
+
+arimaForecastA <- ArimaForecast(dailyDataA)
+arimaForecastB <- ArimaForecast(dailyDataB)
+arimaForecastC <- ArimaForecast(dailyDataC)
+
+write.csv(arimaForecastA, "./Results/DailyForecast/arimaForecastA.csv", row.names=FALSE)
+write.csv(arimaForecastB, "./Results/DailyForecast/arimaForecastB.csv", row.names=FALSE)
+write.csv(arimaForecastC, "./Results/DailyForecast/arimaForecastC.csv", row.names=FALSE)
+
+# RMSE model performance
+arimaRmseA <- RandomSampleRMSE(arimaForecastA)
+arimaRmseB <- RandomSampleRMSE(arimaForecastB)
+arimaRmseC <- RandomSampleRMSE(arimaForecastC)
+
+write.csv(arimaRmseA, "./Results/Evaluation/arimaRmseA.csv", row.names=FALSE)
+write.csv(arimaRmseB, "./Results/Evaluation/arimaRmseB.csv", row.names=FALSE)
+write.csv(arimaRmseC, "./Results/Evaluation/arimaRmseC.csv", row.names=FALSE)
+
+
+
+############ Multivariate Model - MARS and Ensemble ############
+
+# Create target variable - Use 30 days future moving average as trainning data target variable
+dailyEmDataA <- dailyDataA %>% mutate(target.demand = rollmean(x = daily.demand, 31, align = "left", fill = NA))
+dailyEmDataB <- dailyDataB %>% mutate(target.demand = rollmean(x = daily.demand, 31, align = "left", fill = NA))
+dailyEmDataC <- dailyDataC %>% mutate(target.demand = rollmean(x = daily.demand, 31, align = "left", fill = NA))
+
+dailyEmDataA <- dailyEmDataA[c(1, 3, 2)]
+dailyEmDataB <- dailyEmDataB[c(1, 3, 2)]
+dailyEmDataC <- dailyEmDataC[c(1, 3, 2)]
+
 monthlyFeaturesTbl <- tbl_df(LoadMultivariateTimeSeries("./Data/predictors.csv"))
 monthlyDataA = monthlyFeaturesTbl %>% select(-starts_with("tool.b")) %>% select(-starts_with("tool.c")) %>% rename(demand = tool.a)
 monthlyDataB = monthlyFeaturesTbl %>% select(-starts_with("tool.a")) %>% select(-starts_with("tool.c")) %>% rename(demand = tool.b)
 monthlyDataC = monthlyFeaturesTbl %>% select(-starts_with("tool.a")) %>% select(-starts_with("tool.b")) %>% rename(demand = tool.c)
 
-write.csv(monthlyDataA, "./Results/Forecast/A-Monthly-Raw.csv")
-write.csv(monthlyDataB, "./Results/Forecast/B-Monthly-Raw.csv")
-write.csv(monthlyDataC, "./Results/Forecast/C-Monthly-Raw.csv")
+remove(monthlyFeaturesTbl)
 
-###### Feature Engineering ######
+write.csv(monthlyDataA, "./Results/Processed/A-Monthly-Raw.csv")
+write.csv(monthlyDataB, "./Results/Processed/B-Monthly-Raw.csv")
+write.csv(monthlyDataC, "./Results/Processed/C-Monthly-Raw.csv")
 
-#' A Function to create additional data features to express time series quarterly changes 
-#' @param monthlyData: date, us.price, us.rig, us.prod, demand
-#' @return time series data: date, us.price, us.rig, us.prod, us.price.ma, us.rig.ma, us.prod.ma, demand.ma, us.price.sd, us.rig.sd, us.prod.sd, demand.sd, demand, demand.actual
-CreateTimeDataFeatures <- function(monthlyData, histTimeWindow = 2, forecastTimeRange = 1, std = TRUE){
-  if (histTimeWindow > 1){
-    monthly.data.features <- monthlyData %>% 
-      mutate(us.price.ma = rollmean(x = us.price, histTimeWindow, align = "right", fill = NA)) %>% 
-      mutate(us.rig.ma = rollmean(x = us.rig, histTimeWindow, align = "right", fill = NA)) %>% 
-      mutate(us.prod.ma = rollmean(x = us.prod, histTimeWindow, align = "right", fill = NA)) %>% 
-      mutate(demand.ma = rollmean(x = demand, histTimeWindow, align = "right", fill = NA))
-    if (std == TRUE){
-      monthly.data.features <- monthly.data.features %>% 
-        mutate(us.price.sd = rollapply(data = us.price, width = histTimeWindow, FUN = sd, align = "right", fill = NA)) %>%
-        mutate(us.rig.sd = rollapply(data = us.rig, width = histTimeWindow, FUN = sd, align = "right", fill = NA)) %>%
-        mutate(us.prod.sd = rollapply(data = us.prod, width = histTimeWindow, FUN = sd, align = "right", fill = NA)) %>%
-        mutate(demand.sd = rollapply(data = demand, width = histTimeWindow, FUN = sd, align = "right", fill = NA))
-    }
+# Feature Engineering
+#' A Function to create additional data features to express variations of the time series
+#' @param dailyData: date, target.demand, daily.demand, us.price, us.rig, us.prod
+#' @return time series data: target.demand, daily.demand, dd.min, dd.max, dd.ma, dd.sd, us.price, us.price.ma, us.price.sd, us.rig, us.rig.ma, us.rig.sd, us.prod, us.prod.ma, us.prod.sd
+CreateTimeDataFeatures <- function(dailyData, monthlyData, histTimeWindowMth = 1){
+  
+  if (histTimeWindowMth == 1){
+    dailyData.feature <- dailyData %>%
+      #daily.demand
+      mutate(dd.min = rollapply(data = daily.demand, width = 30, FUN = min, align = "right", fill = NA)) %>%
+      mutate(dd.max = rollmax(x = daily.demand, 30, align = "right", fill = NA)) %>%
+      mutate(dd.ma = rollmean(x = daily.demand, 30, align = "right", fill = NA)) %>%
+      mutate(dd.sd = rollapply(data = daily.demand, width = 30, FUN = sd, align = "right", fill = NA))
     
-    monthly.data.features <- monthly.data.features[, c(1:4, 6:ncol(monthly.data.features), 5)]
-    monthly.data.features <- monthly.data.features %>% mutate(demand.lead = lead(demand, n = forecastTimeRange))
+    dailyData.feature$month=floor_date(dailyData.feature$date, unit = "month")
+    dailyData.feature <- full_join(dailyData.feature, monthlyData, by = c("month" = "date")) %>% select(-month, -demand)
+     
+  } else {
+    
+    monthlyData.feature <- monthlyData %>%
+      #us.price
+      mutate(us.price.ma = rollmean(x = us.price, histTimeWindowMth, align = "right", fill = NA)) %>% 
+      mutate(us.price.sd = rollapply(data = us.price, width = histTimeWindowMth, FUN = sd, align = "right", fill = NA)) %>%
+      #us.rig
+      mutate(us.rig.ma = rollmean(x = us.rig, histTimeWindowMth, align = "right", fill = NA)) %>% 
+      mutate(us.rig.sd = rollapply(data = us.rig, width = histTimeWindowMth, FUN = sd, align = "right", fill = NA)) %>%
+      #us.prod
+      mutate(us.prod.ma = rollmean(x = us.prod, histTimeWindowMth, align = "right", fill = NA)) %>% 
+      mutate(us.prod.sd = rollapply(data = us.prod, width = histTimeWindowMth, FUN = sd, align = "right", fill = NA))
+    
+    dailyData.feature <- dailyData
+    dailyData.feature$month=floor_date(dailyData.feature$date, unit = "month")
+    dailyData.feature <- full_join(dailyData.feature, monthlyData.feature, by = c("month" = "date")) %>% select(-month, -demand)
+    
   }
   
-  return(monthly.data.features)
+    
+  return(na.omit(dailyData.feature))
 }
 
+dailyEmDataA.1m.features <- CreateTimeDataFeatures(dailyEmDataA, monthlyDataA, histTimeWindowMth = 1)
+dailyEmDataA.3m.features <- CreateTimeDataFeatures(dailyEmDataA, monthlyDataA, histTimeWindowMth = 3)
+dailyEmDataA.6m.features <- CreateTimeDataFeatures(dailyEmDataA, monthlyDataA, histTimeWindowMth = 6)
 
-###### MARS Prediction with sliding window - default 24 months ######
+dailyEmDataB.1m.features <- CreateTimeDataFeatures(dailyEmDataB, monthlyDataB, histTimeWindowMth = 1)
+dailyEmDataB.3m.features <- CreateTimeDataFeatures(dailyEmDataB, monthlyDataB, histTimeWindowMth = 3)
+dailyEmDataB.6m.features <- CreateTimeDataFeatures(dailyEmDataB, monthlyDataB, histTimeWindowMth = 6)
+
+dailyEmDataC.1m.features <- CreateTimeDataFeatures(dailyEmDataC, monthlyDataC, histTimeWindowMth = 1)
+dailyEmDataC.3m.features <- CreateTimeDataFeatures(dailyEmDataC, monthlyDataC, histTimeWindowMth = 3)
+dailyEmDataC.6m.features <- CreateTimeDataFeatures(dailyEmDataC, monthlyDataC, histTimeWindowMth = 6)
+
+remove(monthlyDataA)
+remove(monthlyDataB)
+remove(monthlyDataC)
+
+
+############ MARS Modeling - 1 Month Historical Data Analysis ############
+# Forecast 30 days with MARS
 library(earth)
 
-#' A prediction function using MARS applied to each row of a time series dataframe to calculate forecast 
-#' @param rowEntry: an entry of data with multiple features, should be a subset of fullDataSet, a minimum of trainWindow data points should be preserved and excluded from the rowEntries
-#' @param fullDataSet: dataframe contains all the time series features with date and the dependent variable
-#' @param trainWindow: the length of sliding time window for trainning to calculate the prediction
-#' @param f: the formula for prediction
-#' @return the predicted value
-MarsPredictRowSlidingWindow <- function(rowEntry, fullDataSet, trainWindow=24, f){
-  tool.train <- tail(fullDataSet %>% filter(date<rowEntry$date), trainWindow)
-  tool.train <- na.omit(tool.train)
-  mars.model <- earth(f, data = tool.train)
-
-  mars.pred <- predict(mars.model, newdata = rowEntry)
-  mars.pred <- ifelse(mars.pred >= 0, mars.pred, 0)
-  return(mars.pred)
-}
-
-###### SVM Prediction with sliding window - default 24 months ######
-library(e1071)
-
-#' A prediction function using SVM applied to each row of a time series dataframe to calculate forecast 
-#' @param rowEntry: an entry of data with multiple features, should be a subset of fullDataSet, a minimum of trainWindow data points should be preserved and excluded from the rowEntries
-#' @param fullDataSet: dataframe contains all the time series features with date and the dependent variable
-#' @param trainWindow: the length of sliding time window for trainning to calculate the prediction
-#' @param f: the formula for prediction
-#' @return the predicted value
-SvmPredictRowSlidingWindow <- function(rowEntry, fullDataSet, trainWindow=24, f, svmParam = NULL){
-  tool.train <- tail(fullDataSet %>% filter(date<rowEntry$date), trainWindow)
-  tool.train <- na.omit(tool.train)
+MarsForecast <- function(dailyEmData){
   
-  # Find the best paramters for SVM model using all data
-  if (!is.null(svmParam)){
-    c <- svmParam$best.model$cost
-    g <- svmParam$best.model$gamma
-    svm.model <- svm(f, data = tool.train, cost = c, gamma = g)
-  } else {
-    svm.model <- svm(f, data = tool.train)
+  # Reserve data before 2015 as trainning data rolling window
+  forecastDF <- dailyEmData %>% select(date, daily.demand) %>%
+    filter(date >= as.Date("2015-01-01"))
+  
+  # Add forecast value columns
+  for (i in 1:30){
+    col.name = paste("n",i,".demand", sep="")
+    forecastDF[[col.name]] <- NA
   }
   
-  svm.pred <- predict(svm.model, newdata = rowEntry)
-  svm.pred <- ifelse(svm.pred >= 0, svm.pred, 0)
-  return(svm.pred)
-}
-
-###### Ensemble Modeling ######
-library(lubridate)
-
-#' The bagging ensemble prediction function using monthly time series data to forcast demand
-#' The ensemble function will first generate data features for different base models with monthly data summerized at different length of historical time window:
-#' - monthly/quarterly/half annual/annual
-#' With the generated data features, we train 4 models to produce 4 forcast values, for example:
-#' - use last month summerized data to forecast next month
-#' - use last 3 months summerized data to forecast next month
-#' - use last 6 months summerized data to forecast next month
-#' - use last 12 month summerized data to forecast next month
-#' The average of the 4 forecast values is the ensemble forecast
-#' @param monthlyData: the input monthly data
-#' @param forecastTimeRange: the unit of time to forecast in the future, by default forecast next month
-#' @param modelMethod: the modeling algorithm to be used
-#' @param trainSize: the number of datapoint of the sliding window. i.e. the length of holdout data for training
-#' @return a dataframe with actual demand of the month, actual future demand, the forecasted demand from all base models and ensemble model:
-#' date, demand, demand.lead, monthly.pred, quarterly.pred, half.annual.pred, annual.pred, ensemble
-EnsembleDemandForecast <- function(monthlyData, forecastTimeRange = 1, modelMethod = "MARS", trainSize = 24){
-  
-  # Create base model data features
-  monthlyDataFeatures = CreateTimeDataFeatures(monthlyData, histTimeWindow = 2, forecastTimeRange, std = FALSE)
-  quarterlyDataFeatures = CreateTimeDataFeatures(monthlyData, histTimeWindow = 3, forecastTimeRange)
-  halfAnnualDataFeatures = CreateTimeDataFeatures(monthlyData, histTimeWindow = 6, forecastTimeRange)
-  annualDataFeatures = CreateTimeDataFeatures(monthlyData, histTimeWindow = 12, forecastTimeRange)
-  
-  # Store predictions of each base model as input data for Ensemble - preserve first 24 months for MARS trainning
-  ensembleData = select(monthlyDataFeatures[(trainSize+1):nrow(monthlyDataFeatures),], date, demand.lead) %>%
-    rename(demand.actual = demand.lead) %>%
-    mutate(date = lead(date, n = forecastTimeRange))
-  
-  # Add n more rows to store predictions, n=forecastTimeRange
-  lastDateWithData = ensembleData$date[nrow(ensembleData)-forecastTimeRange]
-  for (i in 1:forecastTimeRange) {
-    month(lastDateWithData) <- month(lastDateWithData) + 1
-    ensembleData$date[nrow(ensembleData)-forecastTimeRange+i] <- lastDateWithData
+  for (i in 1:nrow(forecastDF)){
+    forecastDate = forecastDF$date[i]
+    
+    
+    
+    # Retrieve 2 years of data from the specific forecastDate
+    train.data = na.omit(dailyEmData %>% filter(date < forecastDate) %>% top_n(n = 730, date))
+    
+    f <- as.formula(paste("target.demand", "~", 
+                                        paste(names(dailyEmData)[!names(dailyEmData) %in% c("date", "target.demand")], collapse = "+")))
+    
+    mars.model <- earth(f, data = train.data)
+    
+    pred.data = dailyEmData %>% filter(date == forecastDate) %>% select(-date, -target.demand)
+    mars.pred <- predict(mars.model, newdata = pred.data)
+    mars.pred <- ifelse(mars.pred >= 0, mars.pred, 0)
+    
+    # Fill datafrme with forecast values
+    for (j in 1:30){
+      forecastDF[[i,(j+2)]] <- mars.pred
+    }
   }
   
+  return(forecastDF)
+}
+
+mars1M.ForecastA <- MarsForecast(dailyEmDataA.1m.features)
+mars1M.ForecastB <- MarsForecast(dailyEmDataB.1m.features)
+mars1M.ForecastC <- MarsForecast(dailyEmDataC.1m.features)
+
+write.csv(mars1M.ForecastA, "./Results/DailyForecast/mars1M.ForecastA.csv", row.names=FALSE)
+write.csv(mars1M.ForecastB, "./Results/DailyForecast/mars1M.ForecastB.csv", row.names=FALSE)
+write.csv(mars1M.ForecastC, "./Results/DailyForecast/mars1M.ForecastC.csv", row.names=FALSE)
+
+# RMSE model performance
+mars1M.RMSE.A <- RandomSampleRMSE(mars1M.ForecastA)
+mars1M.RMSE.B <- RandomSampleRMSE(mars1M.ForecastB)
+mars1M.RMSE.C <- RandomSampleRMSE(mars1M.ForecastC)
+
+write.csv(mars1M.RMSE.A, "./Results/Evaluation/mars1M.RMSE.A.csv", row.names=FALSE)
+write.csv(mars1M.RMSE.B, "./Results/Evaluation/mars1M.RMSE.B.csv", row.names=FALSE)
+write.csv(mars1M.RMSE.C, "./Results/Evaluation/mars1M.RMSE.C.csv", row.names=FALSE)
+
+
+############ MARS Ensemble Modeling - combining 1/3/6 Months Historical Data Analysis ############
+# Forecast 30 days with MARS
+
+MarsEnsembleForecast <- function(dailyEmData.1M, dailyEmData.3M, dailyEmData.6M){
   
-  # Monthly Base Model 
-  monthly.formula <- as.formula(paste("demand.lead", "~", 
-                                         paste(names(monthlyDataFeatures)[!names(monthlyDataFeatures) %in% c("date", "demand.lead")], collapse = "+")))
-  monthly.mars.pred <- monthlyDataFeatures[(trainSize+1):nrow(monthlyDataFeatures),]
+  # Reserve data before 2015 as trainning data rolling window
+  forecastDF <- dailyEmData.1M %>% select(date, daily.demand) %>%
+    filter(date >= as.Date("2015-01-01"))
   
-  # Quarterly Base Model 
-  quarterly.formula <- as.formula(paste("demand.lead", "~", 
-                                        paste(names(quarterlyDataFeatures)[!names(quarterlyDataFeatures) %in% c("date", "demand.lead")], collapse = "+")))
-  quarterly.mars.pred <- quarterlyDataFeatures[(trainSize+1):nrow(quarterlyDataFeatures),]
-  
-  # Half Annual Base Model 
-  halfAnnual.formula <- as.formula(paste("demand.lead", "~", 
-                                         paste(names(halfAnnualDataFeatures)[!names(halfAnnualDataFeatures) %in% c("date", "demand.lead")], collapse = "+")))
-  halfAnnual.mars.pred <- halfAnnualDataFeatures[(trainSize+1):nrow(halfAnnualDataFeatures),]
-  
-  # Annual Base Model 
-  annual.formula <- as.formula(paste("demand.lead", "~", 
-                                     paste(names(annualDataFeatures)[!names(annualDataFeatures) %in% c("date", "demand.lead")], collapse = "+")))
-  annual.mars.pred <- annualDataFeatures[(trainSize+1):nrow(annualDataFeatures),]
-  
-  if (modelMethod == "MARS"){
-    ensembleData$monthly.pred = as.numeric(
-      by(monthly.mars.pred, 1:nrow(monthly.mars.pred), 
-         FUN = MarsPredictRowSlidingWindow, 
-         fullDataSet=monthlyDataFeatures, 
-         trainWindow=trainSize,
-         f = monthly.formula))
-    
-    ensembleData$quarterly.pred = as.numeric(
-      by(quarterly.mars.pred, 1:nrow(quarterly.mars.pred), 
-         FUN = MarsPredictRowSlidingWindow, 
-         fullDataSet=quarterlyDataFeatures, 
-         trainWindow=trainSize,
-         f = quarterly.formula))
-    
-    ensembleData$half.annual.pred = as.numeric(
-      by(halfAnnual.mars.pred, 1:nrow(halfAnnual.mars.pred), 
-         FUN = MarsPredictRowSlidingWindow, 
-         fullDataSet=halfAnnualDataFeatures, 
-         trainWindow=trainSize,
-         f = halfAnnual.formula))
-    
-    ensembleData$annual.pred = as.numeric(
-      by(annual.mars.pred, 1:nrow(annual.mars.pred), 
-         FUN = MarsPredictRowSlidingWindow, 
-         fullDataSet=annualDataFeatures, 
-         trainWindow=trainSize,
-         f = annual.formula))
-    
-    ensembleData$ensemble.pred = rowMeans(ensembleData[3:ncol(ensembleData)])
-    
-  } else if (modelMethod == "SVM"){
-    
-    best.svm.param.month <- tune.svm(monthly.formula, data = na.omit(monthlyDataFeatures), gamma = seq(0.5,3.0, by=0.1), cost = seq(100,1000, by = 100))
-    ensembleData$monthly.pred = as.numeric(
-      by(monthly.mars.pred, 1:nrow(monthly.mars.pred), 
-         FUN = SvmPredictRowSlidingWindow, 
-         fullDataSet=monthlyDataFeatures, 
-         trainWindow=trainSize,
-         f = monthly.formula,
-         svmParam = best.svm.param.month
-         ))
-    
-    best.svm.param.quarter <- tune.svm(quarterly.formula, data = na.omit(quarterlyDataFeatures), gamma = seq(0.5,3.0, by=0.1), cost = seq(100,1000, by = 100))
-    ensembleData$quarterly.pred = as.numeric(
-      by(quarterly.mars.pred, 1:nrow(quarterly.mars.pred), 
-         FUN = SvmPredictRowSlidingWindow, 
-         fullDataSet=quarterlyDataFeatures, 
-         trainWindow=trainSize,
-         f = quarterly.formula,
-         svmParam = best.svm.param.quarter))
-    
-    best.svm.param.halfannual <- tune.svm(halfAnnual.formula, data = na.omit(halfAnnualDataFeatures), gamma = seq(0.5,3.0, by=0.1), cost = seq(100,1000, by = 100))
-    ensembleData$half.annual.pred = as.numeric(
-      by(halfAnnual.mars.pred, 1:nrow(halfAnnual.mars.pred), 
-         FUN = SvmPredictRowSlidingWindow, 
-         fullDataSet=halfAnnualDataFeatures, 
-         trainWindow=trainSize,
-         f = halfAnnual.formula,
-         svmParam = best.svm.param.halfannual))
-    
-    best.svm.param.annual <- tune.svm(annual.formula, data = na.omit(annualDataFeatures), gamma = seq(0.5,3.0, by=0.1), cost = seq(100,1000, by = 100))
-    ensembleData$annual.pred = as.numeric(
-      by(annual.mars.pred, 1:nrow(annual.mars.pred), 
-         FUN = SvmPredictRowSlidingWindow, 
-         fullDataSet=annualDataFeatures, 
-         trainWindow=trainSize,
-         f = annual.formula,
-         svmParam = best.svm.param.annual))
-    
-    ensembleData$ensemble.pred = rowMeans(ensembleData[3:ncol(ensembleData)])
-    
+  # Add forecast value columns
+  for (i in 1:30){
+    col.name = paste("n",i,".demand", sep="")
+    forecastDF[[col.name]] <- NA
   }
   
-  return(ensembleData)
+  for (i in 1:nrow(forecastDF)){
+    forecastDate = forecastDF$date[i]
+    
+    # 1 Month Model
+    # Retrieve 2 years of data from the specific forecastDate
+    train.data.1m = na.omit(dailyEmData.1M %>% filter(date < forecastDate) %>% top_n(n = 730, date))
+    
+    f.1m <- as.formula(paste("target.demand", "~", 
+                          paste(names(train.data.1m)[!names(train.data.1m) %in% c("date", "target.demand")], collapse = "+")))
+    
+    mars.model.1m <- earth(f.1m, data = train.data.1m)
+    
+    pred.1m = dailyEmData.1M %>% filter(date == forecastDate) %>% select(-date, -target.demand)
+    mars.pred.1m <- predict(mars.model.1m, newdata = pred.1m)
+    mars.pred.1m <- ifelse(mars.pred.1m >= 0, mars.pred.1m, 0)
+    
+    # 3 Month Model
+    # Retrieve 2 years of data from the specific forecastDate
+    train.data.3m = na.omit(dailyEmData.3M %>% filter(date < forecastDate) %>% top_n(n = 730, date))
+    
+    f.3m <- as.formula(paste("target.demand", "~", 
+                             paste(names(train.data.3m)[!names(train.data.3m) %in% c("date", "target.demand")], collapse = "+")))
+    
+    mars.model.3m <- earth(f.3m, data = train.data.3m)
+    
+    pred.3m = dailyEmData.3M %>% filter(date == forecastDate) %>% select(-date, -target.demand)
+    mars.pred.3m <- predict(mars.model.3m, newdata = pred.3m)
+    mars.pred.3m <- ifelse(mars.pred.3m >= 0, mars.pred.3m, 0)
+    
+    # 6 Month Model
+    # Retrieve 2 years of data from the specific forecastDate
+    train.data.6m = na.omit(dailyEmData.6M %>% filter(date < forecastDate) %>% top_n(n = 730, date))
+    
+    f.6m <- as.formula(paste("target.demand", "~", 
+                             paste(names(train.data.6m)[!names(train.data.6m) %in% c("date", "target.demand")], collapse = "+")))
+    
+    mars.model.6m <- earth(f.6m, data = train.data.6m)
+    
+    pred.6m = dailyEmData.6M %>% filter(date == forecastDate) %>% select(-date, -target.demand)
+    mars.pred.6m <- predict(mars.model.6m, newdata = pred.6m)
+    mars.pred.6m <- ifelse(mars.pred.6m >= 0, mars.pred.6m, 0)
+    
+    # Fill datafrme with forecast values
+    for (j in 1:30){
+      forecastDF[[i,(j+2)]] <- mean(c(mars.pred.1m, mars.pred.3m, mars.pred.6m))
+    }
+  }
+  
+  return(forecastDF)
 }
 
 
-###### Forecast Demand ######
-aN1EnsembleData = EnsembleDemandForecast(monthlyDataA, forecastTimeRange = 1)
-aN2EnsembleData = EnsembleDemandForecast(monthlyDataA, forecastTimeRange = 2)
-aN3EnsembleData = EnsembleDemandForecast(monthlyDataA, forecastTimeRange = 3)
+marsEnsembleForecastA <- MarsEnsembleForecast(dailyEmDataA.1m.features, dailyEmDataA.3m.features, dailyEmDataA.6m.features)
+marsEnsembleForecastB <- MarsEnsembleForecast(dailyEmDataB.1m.features, dailyEmDataB.3m.features, dailyEmDataB.6m.features)
+marsEnsembleForecastC <- MarsEnsembleForecast(dailyEmDataC.1m.features, dailyEmDataC.3m.features, dailyEmDataC.6m.features)
 
-bN1EnsembleData = EnsembleDemandForecast(monthlyDataB, forecastTimeRange = 1)
-bN2EnsembleData = EnsembleDemandForecast(monthlyDataB, forecastTimeRange = 2)
-bN3EnsembleData = EnsembleDemandForecast(monthlyDataB, forecastTimeRange = 3)
+write.csv(marsEnsembleForecastA, "./Results/DailyForecast/marsEnsembleForecastA.csv", row.names=FALSE)
+write.csv(marsEnsembleForecastB, "./Results/DailyForecast/marsEnsembleForecastB.csv", row.names=FALSE)
+write.csv(marsEnsembleForecastC, "./Results/DailyForecast/marsEnsembleForecastC.csv", row.names=FALSE)
 
-cN1EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 1)
-cN2EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 2)
-cN3EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 3)
+# RMSE model performance
+marsEnsembleRMSE.A <- RandomSampleRMSE(marsEnsembleForecastA)
+marsEnsembleRMSE.B <- RandomSampleRMSE(marsEnsembleForecastB)
+marsEnsembleRMSE.C <- RandomSampleRMSE(marsEnsembleForecastC)
 
-# aN1EnsembleData = EnsembleDemandForecast(monthlyDataA, forecastTimeRange = 1, modelMethod = "SVM")
-# aN2EnsembleData = EnsembleDemandForecast(monthlyDataA, forecastTimeRange = 2, modelMethod = "SVM")
-# aN3EnsembleData = EnsembleDemandForecast(monthlyDataA, forecastTimeRange = 3, modelMethod = "SVM")
-# 
-# bN1EnsembleData = EnsembleDemandForecast(monthlyDataB, forecastTimeRange = 1, modelMethod = "SVM")
-# bN2EnsembleData = EnsembleDemandForecast(monthlyDataB, forecastTimeRange = 2, modelMethod = "SVM")
-# bN3EnsembleData = EnsembleDemandForecast(monthlyDataB, forecastTimeRange = 3, modelMethod = "SVM")
-# 
-# cN1EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 1, modelMethod = "SVM")
-# cN2EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 2, modelMethod = "SVM")
-# cN3EnsembleData = EnsembleDemandForecast(monthlyDataC, forecastTimeRange = 3, modelMethod = "SVM")
+write.csv(marsEnsembleRMSE.A, "./Results/Evaluation/marsEnsembleRMSE.A.csv", row.names=FALSE)
+write.csv(marsEnsembleRMSE.B, "./Results/Evaluation/marsEnsembleRMSE.B.csv", row.names=FALSE)
+write.csv(marsEnsembleRMSE.C, "./Results/Evaluation/marsEnsembleRMSE.C.csv", row.names=FALSE)
 
 
-write.csv(aN1EnsembleData, file = "./Results/Forecast/A-1M-Forecast.csv")
-write.csv(aN2EnsembleData, file = "./Results/Forecast/A-2M-Forecast.csv")
-write.csv(aN3EnsembleData, file = "./Results/Forecast/A-3M-Forecast.csv")
+############ Plot Model Performance ############
+library(reshape2)
+library(ggplot2)
+
+plotRmseA = baselineRmseA %>% select(date, rmse) %>% rename(Baseline = rmse)
+plotRmseA$ARIMA = arimaRmseA$rmse
+plotRmseA$MARS.1M = mars1M.RMSE.A$rmse
+plotRmseA$MARS.EN = marsEnsembleRMSE.A$rmse
+plotRmseA$Future.AVG = bestAvgRmseA$rmse
+plotRmseA = melt(plotRmseA, id.vars = "date") %>% rename(Models = variable, RMSE = value)
+
+plotRmseB = baselineRmseB %>% select(date, rmse) %>% rename(Baseline = rmse)
+plotRmseB$ARIMA = arimaRmseB$rmse
+plotRmseB$MARS.1M = mars1M.RMSE.B$rmse
+plotRmseB$MARS.EN = marsEnsembleRMSE.B$rmse
+plotRmseB$Future.AVG = bestAvgRmseB$rmse
+plotRmseB = melt(plotRmseB, id.vars = "date") %>% rename(Models = variable, RMSE = value)
+
+plotRmseC = baselineRmseC %>% select(date, rmse) %>% rename(Baseline = rmse)
+plotRmseC$ARIMA = arimaRmseC$rmse
+plotRmseC$MARS.1M = mars1M.RMSE.C$rmse
+plotRmseC$MARS.EN = marsEnsembleRMSE.C$rmse
+plotRmseC$Future.AVG = bestAvgRmseC$rmse
+plotRmseC = melt(plotRmseC, id.vars = "date") %>% rename(Models = variable, RMSE = value)
+
+ggplot(plotRmseA, aes(x=Models, y=RMSE, fill=Models)) + geom_boxplot() + ggtitle("Tool A - RMSE")
+ggplot(plotRmseA, aes(x=RMSE, fill=Models)) + geom_density(alpha=.3) + ggtitle("Tool A - RMSE")
+
+# Exclude outliers of tool B MARS.1M model for better plot visibility
+ggplot(plotRmseB, aes(x=Models, y=RMSE, fill=Models)) + geom_boxplot() + ggtitle("Tool B - RMSE") + coord_cartesian(ylim = c(0,25))
+ggplot(plotRmseB, aes(x=RMSE, fill=Models)) + geom_density(alpha=.3) + ggtitle("Tool B - RMSE")
+
+ggplot(plotRmseC, aes(x=Models, y=RMSE, fill=Models)) + geom_boxplot() + ggtitle("Tool C - RMSE")
+ggplot(plotRmseC, aes(x=RMSE, fill=Models)) + geom_density(alpha=.3) + ggtitle("Tool C - RMSE")
 
 
-write.csv(bN1EnsembleData, file = "./Results/Forecast/B-1M-Forecast.csv")
-write.csv(bN2EnsembleData, file = "./Results/Forecast/B-2M-Forecast.csv")
-write.csv(bN3EnsembleData, file = "./Results/Forecast/B-3M-Forecast.csv")
+############  Average RMSE comparison ############
+mean(baselineRmseA$rmse)
+mean(arimaRmseA$rmse)
+mean(mars1M.RMSE.A$rmse)
+mean(marsEnsembleRMSE.A$rmse)
+mean(bestAvgRmseA$rmse)
 
+mean(baselineRmseB$rmse)
+mean(arimaRmseB$rmse)
+mean(mars1M.RMSE.B$rmse)
+mean(marsEnsembleRMSE.B$rmse)
+mean(bestAvgRmseB$rmse)
 
-write.csv(cN1EnsembleData, file = "./Results/Forecast/C-1M-Forecast.csv")
-write.csv(cN2EnsembleData, file = "./Results/Forecast/C-2M-Forecast.csv")
-write.csv(cN3EnsembleData, file = "./Results/Forecast/C-3M-Forecast.csv")
-
-
-# Calculate Difference
-aN1EnsembleData$monthly.diff = aN1EnsembleData$ensemble.pred - aN1EnsembleData$demand.actual
-aN2EnsembleData$monthly.diff = aN2EnsembleData$ensemble.pred - aN2EnsembleData$demand.actual
-aN3EnsembleData$monthly.diff = aN3EnsembleData$ensemble.pred - aN3EnsembleData$demand.actual
-
-bN1EnsembleData$monthly.diff = bN1EnsembleData$ensemble.pred - bN1EnsembleData$demand.actual
-bN2EnsembleData$monthly.diff = bN2EnsembleData$ensemble.pred - bN2EnsembleData$demand.actual
-bN3EnsembleData$monthly.diff = bN3EnsembleData$ensemble.pred - bN3EnsembleData$demand.actual
-
-cN1EnsembleData$monthly.diff = cN1EnsembleData$ensemble.pred - cN1EnsembleData$demand.actual
-cN2EnsembleData$monthly.diff = cN2EnsembleData$ensemble.pred - cN2EnsembleData$demand.actual
-cN3EnsembleData$monthly.diff = cN3EnsembleData$ensemble.pred - cN3EnsembleData$demand.actual
-
-
-###### Calculate RMSE ######
-CalculateRMSE <- function(predictedData){
-  predictedData=na.omit(predictedData)
-  rmseCompare <- data.frame(
-    monthlyModel = sqrt( sum( (predictedData$demand.actual - predictedData$monthly.pred)^2 , na.rm = TRUE ) / nrow(predictedData)),
-    quarterlyModel = sqrt( sum( (predictedData$demand.actual - predictedData$quarterly.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
-    halfAnnualModel = sqrt( sum( (predictedData$demand.actual - predictedData$half.annual.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
-    annualModel = sqrt( sum( (predictedData$demand.actual - predictedData$annual.pred)^2 , na.rm = TRUE ) / nrow(predictedData) ),
-    ensembleModel = sqrt( sum( (predictedData$demand.actual - predictedData$ensemble.pred)^2 , na.rm = TRUE ) / nrow(predictedData) )
-  )
-  return(rmseCompare)
-}
-
-rmseResults <- cbind(data.frame(tool="A", forecastMonth=1), CalculateRMSE(aN1EnsembleData))
-rmseResults <- rbind(rmseResults, cbind(data.frame(tool="A", forecastMonth=2), CalculateRMSE(aN2EnsembleData)))
-rmseResults <- rbind(rmseResults, cbind(data.frame(tool="A", forecastMonth=3), CalculateRMSE(aN3EnsembleData)))
-
-rmseResults <- rbind(rmseResults, cbind(data.frame(tool="B", forecastMonth=1), CalculateRMSE(bN1EnsembleData)))
-rmseResults <- rbind(rmseResults, cbind(data.frame(tool="B", forecastMonth=2), CalculateRMSE(bN2EnsembleData)))
-rmseResults <- rbind(rmseResults, cbind(data.frame(tool="B", forecastMonth=3), CalculateRMSE(bN3EnsembleData)))
-
-rmseResults <- rbind(rmseResults, cbind(data.frame(tool="C", forecastMonth=1), CalculateRMSE(cN1EnsembleData)))
-rmseResults <- rbind(rmseResults, cbind(data.frame(tool="C", forecastMonth=2), CalculateRMSE(cN2EnsembleData)))
-rmseResults <- rbind(rmseResults, cbind(data.frame(tool="C", forecastMonth=3), CalculateRMSE(cN3EnsembleData)))
-
-write.csv(rmseResults, file = "./Results/RMSE.csv")
+mean(baselineRmseC$rmse)
+mean(arimaRmseC$rmse)
+mean(mars1M.RMSE.C$rmse)
+mean(marsEnsembleRMSE.C$rmse)
+mean(bestAvgRmseC$rmse)
