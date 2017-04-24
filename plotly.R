@@ -3,7 +3,80 @@ library(plotly)
 library(dplyr)
 
 ###### Load Data ######
-aRaw <- read.csv("./Results/Forecast/A-Monthly-Raw.csv")
+aRaw <- read.csv("./Results/Processed/A-Daily-Raw.csv")
+aRaw$date = as.Date(aRaw$date)
+bRaw <- read.csv("./Results/Processed/B-Daily-Raw.csv")
+bRaw$date = as.Date(bRaw$date)
+cRaw <- read.csv("./Results/Processed/C-Daily-Raw.csv")
+cRaw$date = as.Date(cRaw$date)
+
+
+# Plot daily demand daata
+rawDailyDemand = data.frame(Date = aRaw$date, Tool_A = aRaw$daily.demand)
+rawDailyDemand <- full_join(rawDailyDemand, bRaw, by = c("Date" = "date")) %>% rename(Tool_B = daily.demand) %>%
+  full_join(cRaw, by = c("Date" = "date")) %>% rename(Tool_C = daily.demand)
+
+rawDailyDemand = filter(rawDailyDemand, Date >= as.Date("2013-01-01"))
+
+
+plotDailyDemand <- plot_ly(data = rawDailyDemand, x=~Date) %>%
+  add_lines(y = ~Tool_A, name = 'Asset A Demand', line = list(color = "rgb(248, 118, 109)")) %>%
+  add_lines(y = ~Tool_B, name = 'Asset B Demand', line = list(color = "rgb(0, 186, 56)")) %>%
+  add_lines(y = ~Tool_C, name = 'Asset C Demand', line = list(color = "rgb(95, 155, 255)")) %>%
+  layout(xaxis = list(
+    title = "",
+    hoverformat = "%Y-%m",
+    showgrid = FALSE,
+    tickmode = "auto",
+    ticks = "inside",
+    rangeselector = list(
+      buttons = list(
+        list(
+          count = 1,
+          label = "1 yr",
+          step = "year",
+          stepmode = "backward"),
+        list(
+          count = 2,
+          label = "2 yr",
+          step = "year",
+          stepmode = "backward"),
+        list(step = "all"))),
+    rangeslider = list(type = "date")
+  ),
+  yaxis = list(
+    title = "Daily Demand",
+    showgrid = FALSE,
+    tickmode = "auto",
+    ticks = "outside",
+    rangemode = "tozero"
+  )
+  # ,
+  # shapes = list(
+  #   list(type = "rect",
+  #        fillcolor = "grey", line = list(color = "grey"), opacity = 0.1,
+  #        x0 = as.Date("2013-01-01"), x1 = as.Date("2015-01-01"), xref = "x",
+  #        y0 = 0, y1 = max(na.omit(rawDailyDemand$Tool_B)) + 2, yref = "y")
+  #   )
+  )
+plotDailyDemand
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 aRaw <- aRaw[,c("date", "demand")]
 aRaw$date <- as.Date(aRaw$date)
 

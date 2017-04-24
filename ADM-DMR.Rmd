@@ -15,6 +15,8 @@ library(reshape)
 library(ggplot2)
 library(gridExtra)
 library(DMwR)
+library(ggthemes)
+library(dplyr)
 ```
 # Project Background and Summary
 Our goal in this assignment is to predict the **demand** for certain tools (also referred to as assets) used by Schlumberger (the world's largest oilfield service company) when providing technical services to Oil & Gas operators. 
@@ -69,15 +71,16 @@ Looking at the plot below, we can see that there are some missing data in the da
 
 ```{r fig.width=12, warning=FALSE}
 # Plot data
-p <- ggplot(melt(toolDemand, id.vars = "Date"), aes(x = Date, y = value,  colour = variable)) +
-  ylab ("Demand") +
+plotToolDemand = toolDemand %>% dplyr::rename(AssetA = toolA) %>% dplyr::rename(AssetB = toolB) %>% dplyr::rename(AssetC = toolC)
+p <- ggplot(melt(plotToolDemand, id.vars = "Date", variable_name = "AssetTypes"), aes(x = Date, y = value,  colour = AssetTypes)) +
+  xlab ("") + ylab ("Daily Demand") +
   geom_line() + 
-  theme_minimal()
+  theme_classic()
 
-rect <- data.frame(xmin=as.Date('2016-02-01'), xmax=as.Date('2016-04-28'), ymin=-Inf, ymax=Inf)
+rect <- data.frame(xmin=as.Date('2016-02-15'), xmax=as.Date('2016-04-15'), ymin=-Inf, ymax=Inf)
 
 p + geom_rect(data = rect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), color = 'black',alpha = 0.1, inherit.aes = FALSE)
-
+remove(plotToolDemand)
 ```
 
 #### Decomposing Time Series
@@ -113,21 +116,22 @@ toolDemand$toolC[toolDemand$Date >= as.Date("2016-03-01") & toolDemand$Date < as
 toolDemand <- na.omit(toolDemand)
 
 # Plot data
-p <- ggplot(melt(toolDemand, id.vars = "Date"), aes(x = Date, y = value,  colour = variable)) +
-  ylab ("Demand") +
+plotToolDemand = toolDemand %>% dplyr::rename(AssetA = toolA) %>% dplyr::rename(AssetB = toolB) %>% dplyr::rename(AssetC = toolC)
+p <- ggplot(melt(plotToolDemand, id.vars = "Date", variable_name = "AssetTypes"), aes(x = Date, y = value,  colour = AssetTypes)) +
+  xlab ("") + ylab ("Daily Demand") +
   geom_line() + 
-  theme_minimal()
+  theme_classic()
 
-rect <- data.frame(xmin=as.Date('2016-02-01'), xmax=as.Date('2016-04-28'), ymin=-Inf, ymax=Inf)
+rect <- data.frame(xmin=as.Date('2016-02-15'), xmax=as.Date('2016-04-15'), ymin=-Inf, ymax=Inf)
 
 p + geom_rect(data = rect, aes(xmin=xmin, xmax=xmax, ymin=ymin, ymax=ymax), color = 'black', alpha = 0.1, inherit.aes = FALSE)
-
+remove(plotToolDemand)
 # Setup training data and holdout data
-# Use 365 days of data to train for 10 days forecast
-forecastDate <- toolDemand$Date[(length(toolDemand$Date)-10)]
+# Use 365 days of data to train for 30 days forecast
+forecastDate <- toolDemand$Date[(length(toolDemand$Date)-30)]
 
 trainData <- tail(subset(toolDemand, Date < forecastDate), n = 365)
-holdoutData <- head(subset(toolDemand, Date >= forecastDate), n = 10)
+holdoutData <- head(subset(toolDemand, Date >= forecastDate), n = 30)
 ```
 
 
@@ -147,15 +151,16 @@ plotForecast <- function(trainDate, trainVal, forecastDF, title){
   
   plot_data <- rbind(actual_values, plot_data)
   
-  p <- ggplot(plot_data) + geom_line(aes(y=actual, x=date, colour = "Actual")) + 
-    geom_line(aes(y=forecast, x=date, colour = "forecast")) + 
+  p <- ggplot(plot_data) + geom_line(aes(y=actual, x=date, colour = "Actual"), size=0.8) + 
+    geom_line(aes(y=forecast, x=date, colour = "Forecast"), linetype="twodash", size=0.9) + 
     geom_ribbon(aes(ymin=lo80, ymax=hi80, x=date, fill = "80% confidence"), alpha = 0.3) +
     geom_ribbon(aes(ymin=lo95, ymax=hi95, x=date, fill = "95% confidence"), alpha = 0.1) +
     scale_colour_manual(values = c("deepskyblue2", "black")) +
-    scale_fill_manual(values = c("red", "tomato")) +
+    scale_fill_manual(values = c("brown1", "tomato")) +
     theme(legend.position = "right") +
+    theme_classic() +
     labs(title = paste(title, "- RMSE: ", round(calculateRMSE(forecastDF$actual, forecastDF$forecast), digits = 4)),
-         x= paste(length(trainDate), "days actual value vs.", nrow(forecastDF),"days forecast"),
+         x= paste("Comparing", length(trainDate), "days actual demand to", nrow(forecastDF),"days forecast"),
          y = "Demand")
   
   return(p)
@@ -177,9 +182,9 @@ modelEvalSimulation <- function(modelName, repetitions = 10){
   
   for (i in 1:repetitions){
     
-    sampleDate <- sample(toolDemand$Date[366:(length(toolDemand$Date)-10)], size = 1)
+    sampleDate <- sample(toolDemand$Date[366:(length(toolDemand$Date)-30)], size = 1)
     sampleTrain <- tail(subset(toolDemand, Date < sampleDate), n = 365)
-    sampleTest <- head(subset(toolDemand, Date >= sampleDate), n = 10)
+    sampleTest <- head(subset(toolDemand, Date >= sampleDate), n = 30)
     
     if (modelName == 'HoltWinters') {
       
@@ -209,7 +214,7 @@ modelEvalSimulation <- function(modelName, repetitions = 10){
       rmseC[i] <- calculateRMSE(forecastC$actual, forecastC$forecast)
   }
   
-  rmseDF <- data.frame(rmseA = rmseA, rmseB = rmseB, rmseC = rmseC)
+  rmseDF <- data.frame(AssetA = rmseA, AssetB = rmseB, AssetC = rmseC)
   
   print(paste("Tool A forecast simulations:", modelName, "- Average RMSE:", round(mean(rmseA), digits = 4), "| Standard Deviation:", round(sd(rmseA), digits = 4) ))
   print(paste("Tool B forecast simulations:", modelName, "- Average RMSE:", round(mean(rmseB), digits = 4), "| Standard Deviation:", round(sd(rmseB), digits = 4) ))
@@ -223,22 +228,22 @@ modelEvalSimulation <- function(modelName, repetitions = 10){
 ## Forecast model with HoltWinters method
 We first attempt to build forecast models with HoltWinters method.
 
-* Our objective is to provide 10 days of demand forecast. 
+* Our objective is to provide 30 days of demand forecast. 
 * We will use one year of data to train the models. 
-* We only care about seasonality properties that might affect the next 10 days forecast, to limit the effect of long term multiple seasonality over the past year. 
-* We treat every 10 days as a time unit as we train the models and we holdback the last 10 days of actual data for prediction comparison
+* We only care about seasonality properties that might affect the next 30 days forecast, to limit the effect of long term multiple seasonality over the past year. 
+* We treat every 30 days as a time unit as we train the models and we holdback the last 30 days of actual data for prediction comparison
 
 #### Define functions for HoltWinters forecasting
 ```{r}
 # Forecast with HoltWinters
 hwForecast <- function(trainList, testList, testDate){
   
-  # We treat every 10 days as a unit of time: frequency = 10
-  train_TS <- ts(trainList, frequency = 10)
+  # We treat every 30 days as a unit of time: frequency = 30
+  train_TS <- ts(trainList, frequency = 30)
   
   ts_model <- HoltWinters(train_TS)
   
-  ts_forecast <- forecast.HoltWinters(ts_model, h=10)
+  ts_forecast <- forecast.HoltWinters(ts_model, h=30)
   
   # rename dataframe columns
   forecast_values <- as.data.frame(ts_forecast)
@@ -251,26 +256,26 @@ hwForecast <- function(trainList, testList, testDate){
 }
 ```
 
-#### Forecast demand for the last 10 days and compare to the actual values 
+#### Forecast demand for the last 30 days and compare to the actual values 
 ```{r fig.height=14, fig.width=12, warning=FALSE}
 # Tool A
 hwforecastA <- hwForecast(trainData$toolA, holdoutData$toolA, holdoutData$Date)
-pa <- plotForecast(tail(trainData$Date, n = 180), tail(trainData$toolA, n = 180), hwforecastA, "Asset A - Holt-Winters")
+pa <- plotForecast(tail(trainData$Date, n = 90), tail(trainData$toolA, n = 90), hwforecastA, "Asset A - Holt-Winters")
 
 # Tool B
 hwforecastB <- hwForecast(trainData$toolB, holdoutData$toolB, holdoutData$Date)
-pb <- plotForecast(tail(trainData$Date, n = 180), tail(trainData$toolB, n = 180), hwforecastB, "Asset B - Holt-Winters")
+pb <- plotForecast(tail(trainData$Date, n = 90), tail(trainData$toolB, n = 90), hwforecastB, "Asset B - Holt-Winters")
 
 # Tool C
 hwforecastC <- hwForecast(trainData$toolC, holdoutData$toolC, holdoutData$Date)
-pc <- plotForecast(tail(trainData$Date, n = 180), tail(trainData$toolC, n = 180), hwforecastC, "Asset C - Holt-Winters")
+pc <- plotForecast(tail(trainData$Date, n = 90), tail(trainData$toolC, n = 90), hwforecastC, "Asset C - Holt-Winters")
 
 grid.arrange(pa, pb, pc, ncol= 1)
 ```
 
 
 ## Forecast model with Auto ARIMA method
-Besides Holt-Winters method, ARIMA is another widely-used approache to time series forecasting. While exponential smoothing models were based on a description of trend and seasonality in the data, ARIMA models aim to describe the autocorrelations in the data. We also attempt to build a model with Auto ARIMA for our demand forcasting problem. Again we use 1 year of data to train for 10 days forecast, we holdback the last 10 days of actual data for prediction comparison
+Besides Holt-Winters method, ARIMA is another widely-used approache to time series forecasting. While exponential smoothing models were based on a description of trend and seasonality in the data, ARIMA models aim to describe the autocorrelations in the data. We also attempt to build a model with Auto ARIMA for our demand forcasting problem. Again we use 1 year of data to train for 30 days forecast, we holdback the last 30 days of actual data for prediction comparison
 
 #### Define functions for Auto ARIMA forecasting
 ```{r}
@@ -281,7 +286,7 @@ arimaForecast <- function(trainList, testList, testDate){
   
   ts_model <- auto.arima(train_TS)
   
-  ts_forecast <- forecast.Arima(ts_model, h=10)
+  ts_forecast <- forecast.Arima(ts_model, h=30)
   
   # rename dataframe columns
   forecast_values <- as.data.frame(ts_forecast)
@@ -295,19 +300,19 @@ arimaForecast <- function(trainList, testList, testDate){
 
 ```
 
-#### Forecast demand for the last 10 days and compare to the actual values 
+#### Forecast demand for the last 30 days and compare to the actual values 
 ```{r fig.height=14, fig.width=12, warning=FALSE}
 # Tool A
 arforecastA <- arimaForecast(trainData$toolA, holdoutData$toolA, holdoutData$Date)
-pa <- plotForecast(tail(trainData$Date, n = 180), tail(trainData$toolA, n = 180), arforecastA, "Asset A - ARIMA")
+pa <- plotForecast(tail(trainData$Date, n = 90), tail(trainData$toolA, n = 90), arforecastA, "Asset A - ARIMA")
 
 # Tool B
 arforecastB <- arimaForecast(trainData$toolB, holdoutData$toolB, holdoutData$Date)
-pb <- plotForecast(tail(trainData$Date, n = 180), tail(trainData$toolB, n = 180), arforecastB, "Asset B - ARIMA")
+pb <- plotForecast(tail(trainData$Date, n = 90), tail(trainData$toolB, n = 90), arforecastB, "Asset B - ARIMA")
 
 # Tool C
 arforecastC <- arimaForecast(trainData$toolC, holdoutData$toolC, holdoutData$Date)
-pc <- plotForecast(tail(trainData$Date, n = 180), tail(trainData$toolC, n = 180), arforecastC, "Asset C - ARIMA")
+pc <- plotForecast(tail(trainData$Date, n = 90), tail(trainData$toolC, n = 90), arforecastC, "Asset C - ARIMA")
 
 grid.arrange(pa, pb, pc, ncol= 1)
 ```
@@ -340,7 +345,7 @@ arimaFourierForecast <- function(trainList, testList, testDate){
     }
   }
   
-  ts_forecast <- forecast.Arima(bestfit, h=10, xreg = fourier(train_TS, K = kVal, h = 10))
+  ts_forecast <- forecast.Arima(bestfit, h=30, xreg = fourier(train_TS, K = kVal, h = 30))
   
   # rename dataframe columns
   forecast_values <- as.data.frame(ts_forecast)
@@ -354,19 +359,19 @@ arimaFourierForecast <- function(trainList, testList, testDate){
 
 ```
 
-#### Forecast demand for the last 10 days and compare to the actual values 
+#### Forecast demand for the last 30 days and compare to the actual values 
 ```{r fig.height=14, fig.width=12, warning=FALSE}
 # Tool A
 arFourForecastA <- arimaFourierForecast(trainData$toolA, holdoutData$toolA, holdoutData$Date)
-pa <- plotForecast(tail(trainData$Date, n = 180), tail(trainData$toolA, n = 180), arFourForecastA, "Asset A - Fourier Series ARIMA")
+pa <- plotForecast(tail(trainData$Date, n = 90), tail(trainData$toolA, n = 90), arFourForecastA, "Asset A - Fourier Series ARIMA")
 
 # Tool B
 arFourForecastB <- arimaFourierForecast(trainData$toolB, holdoutData$toolB, holdoutData$Date)
-pb <- plotForecast(tail(trainData$Date, n = 180), tail(trainData$toolB, n = 180), arFourForecastB, "Asset B - Fourier Series ARIMA")
+pb <- plotForecast(tail(trainData$Date, n = 90), tail(trainData$toolB, n = 90), arFourForecastB, "Asset B - Fourier Series ARIMA")
 
 # Tool C
 arFourForecastC <- arimaFourierForecast(trainData$toolC, holdoutData$toolC, holdoutData$Date)
-pc <- plotForecast(tail(trainData$Date, n = 180), tail(trainData$toolC, n = 180), arFourForecastC, "Asset C - Fourier Series ARIMA")
+pc <- plotForecast(tail(trainData$Date, n = 90), tail(trainData$toolC, n = 90), arFourForecastC, "Asset C - Fourier Series ARIMA")
 
 grid.arrange(pa, pb, pc, ncol= 1)
 ```
@@ -390,9 +395,13 @@ hwSimRMSE <- modelEvalSimulation(modelName = 'HoltWinters')
 
 hwSimRMSE.melt <- hwSimRMSE
 hwSimRMSE.melt$id <- row.names(hwSimRMSE)
-hwSimRMSE.melt <- melt(hwSimRMSE.melt, id.vars ='id')
+hwSimRMSE.melt <- melt(hwSimRMSE.melt, id.vars ='id', variable_name = "AssetTypes")
 
-hwplot <- ggplot(hwSimRMSE.melt, aes(variable, value)) + geom_boxplot() + labs(x= "Holt-Winters RMSE Box Plot")
+hwplot <- ggplot(hwSimRMSE.melt, aes(AssetTypes, value, color=AssetTypes)) + 
+  geom_boxplot() + 
+  coord_cartesian(ylim = c(0, 13)) +
+  theme_classic() +
+  labs(x= "Holt-Winters", y="RMSE")
 ```
 
 #### Model Performance Evaluation with 400-run simulation
@@ -409,9 +418,13 @@ arSimRMSE <- modelEvalSimulation(modelName = 'ARIMA')
 
 arSimRMSE.melt <- arSimRMSE
 arSimRMSE.melt$id <- row.names(arSimRMSE)
-arSimRMSE.melt <- melt(arSimRMSE.melt, id.vars ='id')
+arSimRMSE.melt <- melt(arSimRMSE.melt, id.vars ='id', variable_name = "AssetTypes")
 
-arplot <- ggplot(arSimRMSE.melt, aes(variable, value)) + geom_boxplot() + labs(x= "ARIMA RMSE Box Plot")
+arplot <- ggplot(arSimRMSE.melt, aes(AssetTypes, value, color=AssetTypes)) + 
+  geom_boxplot() + 
+  coord_cartesian(ylim = c(0, 13)) +
+  theme_classic() +
+  labs(x= "ARIMA", y="RMSE")
 ```
 
 #### Model Performance Evaluation with 400-run simulation
@@ -428,9 +441,13 @@ arfSimRMSE <- modelEvalSimulation(modelName = 'ARIMA-F')
 
 arfSimRMSE.melt <- arfSimRMSE
 arfSimRMSE.melt$id <- row.names(arfSimRMSE)
-arfSimRMSE.melt <- melt(arfSimRMSE.melt, id.vars ='id')
+arfSimRMSE.melt <- melt(arfSimRMSE.melt, id.vars ='id', variable_name = "AssetTypes")
 
-arfplot <- ggplot(arfSimRMSE.melt, aes(variable, value)) + geom_boxplot() + labs(x= "ARIMA-F RMSE Box Plot")
+arfplot <- ggplot(arfSimRMSE.melt, aes(AssetTypes, value, color=AssetTypes)) + 
+  geom_boxplot() +
+  coord_cartesian(ylim = c(0, 13)) +
+  theme_classic() +
+  labs(x= "ARIMA-Fourier", y="RMSE")
 ```
 
 #### Model Performance Evaluation with 400-run simulation
@@ -459,21 +476,21 @@ selectBestModel <- function(simRmseDfList){
   for(i in 1:length(simRmseDfList)){
     modelName = names(simRmseDfList[i])
     
-    if ((exists('aAvgRMSE') == FALSE) || aAvgRMSE > mean(simRmseDfList[[i]]$rmseA)) {
-      aAvgRMSE <- mean(simRmseDfList[[i]]$rmseA)
+    if ((exists('aAvgRMSE') == FALSE) || aAvgRMSE > mean(simRmseDfList[[i]]$AssetA)) {
+      aAvgRMSE <- mean(simRmseDfList[[i]]$AssetA)
       bestModel[1,1] <- as.character(modelName)
       bestModel[1,2] <- aAvgRMSE
     }
     
     
-    if ((exists('bAvgRMSE') == FALSE) || bAvgRMSE > mean(simRmseDfList[[i]]$rmseB)) {
-      bAvgRMSE <- mean(simRmseDfList[[i]]$rmseB)
+    if ((exists('bAvgRMSE') == FALSE) || bAvgRMSE > mean(simRmseDfList[[i]]$AssetB)) {
+      bAvgRMSE <- mean(simRmseDfList[[i]]$AssetB)
       bestModel[2,1] <- as.character(modelName)
       bestModel[2,2] <- bAvgRMSE
     }
     
-    if ((exists('cAvgRMSE') == FALSE) || cAvgRMSE > mean(simRmseDfList[[i]]$rmseC)) {
-      cAvgRMSE <- mean(simRmseDfList[[i]]$rmseC)
+    if ((exists('cAvgRMSE') == FALSE) || cAvgRMSE > mean(simRmseDfList[[i]]$AssetC)) {
+      cAvgRMSE <- mean(simRmseDfList[[i]]$AssetC)
       bestModel[3,1] <- as.character(modelName)
       bestModel[3,2] <- cAvgRMSE
     }
@@ -503,10 +520,15 @@ loadMultivariateTimeSeries <- function(fileName){
 
 plotMultivariateTimeSeries <- function(plot.data, assetName, modelName){
   
-  plot.data.melt <- melt(plot.data, id.vars = 'Date')
+  #plot.data.melt <- melt(plot.data, id.vars = 'Date')
   
   # Plot actual vs. forecast
-  p <- ggplot(plot.data.melt, aes(x = Date, y = value, color = variable)) + geom_line() +
+  p <- ggplot(plot.data) +
+    # , aes(x = Date, y = value, color = variable)) + 
+    geom_line(aes(y=actual, x=Date, colour = "Actual"), size=0.8) +
+    geom_line(aes(y=predict, x=Date, colour = "Forecast"), linetype="twodash", size=0.9) +
+    scale_colour_manual(values = c("deepskyblue2", "red")) +
+    theme_classic() +
     labs(title = paste(assetName, modelName, "- RMSE: ", round(calculateRMSE(plot.data$actual, plot.data$predict), digits = 4)),x = "Date", y = "Demand")
 
   return(p)

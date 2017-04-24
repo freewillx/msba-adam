@@ -49,6 +49,7 @@ write.csv(dailyDataC, "./Results/Processed/C-Daily-Raw.csv", row.names=FALSE)
 
 RandomSampleRMSE <- function(forecastDf, sample.size = 300){
 
+  # Random sample 300 days but holdoutlast 30 days from random sampling range
   samples = forecastDf[sample((nrow(forecastDf)-30), sample.size),]
   
   rmseResult = samples %>% select(date)
@@ -56,7 +57,9 @@ RandomSampleRMSE <- function(forecastDf, sample.size = 300){
   
   for (i in 1:nrow(samples)){
     entry = samples[i,]
+    # Actual 30 days demand starting from the sampled date
     compare = filter(forecastDf, date >= entry$date)[1:30,1:2]
+    # Transpose the forecasted 30 days demand data in columns, starting from the sampled date
     compare$forecast = as.data.frame(t(entry[,3:ncol(entry)]))[,1]
     rmseResult$rmse[i] = sqrt( mean( (compare$daily.demand - compare$forecast)^2 , na.rm = TRUE ) )
   }
@@ -124,6 +127,9 @@ bestAvgRmseA <- RandomSampleRMSE(bestAvgForecastA)
 bestAvgRmseB <- RandomSampleRMSE(bestAvgForecastB)
 bestAvgRmseC <- RandomSampleRMSE(bestAvgForecastC)
 
+write.csv(bestAvgRmseA, "./Results/Evaluation/bestAvgRmseA.csv", row.names=FALSE)
+write.csv(bestAvgRmseB, "./Results/Evaluation/bestAvgRmseB.csv", row.names=FALSE)
+write.csv(bestAvgRmseC, "./Results/Evaluation/bestAvgRmseC.csv", row.names=FALSE)
 
 ############ ARIMA Model ############
 # Forecast 30 days with Auto ARIMA
@@ -143,8 +149,8 @@ ArimaForecast <- function(dailyData){
   for (i in 1:nrow(forecastDF)){
     forecastDate = forecastDF$date[i]
     
-    # Retrieve 180 days of data from the specific forecastDate
-    trainData = dailyData %>% filter(date <= forecastDate) %>% top_n(n = 180, date) %>% select(daily.demand)
+    # Retrieve 365 days of data from the specific forecastDate
+    trainData = dailyData %>% filter(date < forecastDate) %>% top_n(n = 365, date) %>% select(daily.demand)
     train_TS <- ts(trainData, frequency = 365)
     ts_model <- auto.arima(train_TS)
     
@@ -407,6 +413,7 @@ write.csv(marsEnsembleRMSE.C, "./Results/Evaluation/marsEnsembleRMSE.C.csv", row
 ############ Plot Model Performance ############
 library(reshape2)
 library(ggplot2)
+library(ggthemes)
 
 plotRmseA = baselineRmseA %>% select(date, rmse) %>% rename(Baseline = rmse)
 plotRmseA$ARIMA = arimaRmseA$rmse
@@ -429,15 +436,30 @@ plotRmseC$MARS.EN = marsEnsembleRMSE.C$rmse
 plotRmseC$Future.AVG = bestAvgRmseC$rmse
 plotRmseC = melt(plotRmseC, id.vars = "date") %>% rename(Models = variable, RMSE = value)
 
-ggplot(plotRmseA, aes(x=Models, y=RMSE, fill=Models)) + geom_boxplot() + ggtitle("Tool A - RMSE")
-ggplot(plotRmseA, aes(x=RMSE, fill=Models)) + geom_density(alpha=.3) + ggtitle("Tool A - RMSE")
+ggplot(plotRmseA, aes(x=Models, y=RMSE, fill=Models)) + geom_boxplot() + 
+  scale_fill_discrete(labels=c("Baseline","ARIMA","MARS","Ensemble","Future 30-days avg")) +
+  scale_x_discrete(labels=c("Baseline","ARIMA","MARS","Ensemble","Future 30-days avg")) +
+  ggtitle("Asset A - RMSE") + theme_classic()
+ggplot(plotRmseA, aes(x=RMSE, fill=Models)) + geom_density(alpha=.3) + 
+  scale_fill_discrete(labels=c("Baseline","ARIMA","MARS","Ensemble","Future 30-days avg")) +
+  xlab("Asset A - RMSE") + ylab("Density") + theme_classic()
 
 # Exclude outliers of tool B MARS.1M model for better plot visibility
-ggplot(plotRmseB, aes(x=Models, y=RMSE, fill=Models)) + geom_boxplot() + ggtitle("Tool B - RMSE") + coord_cartesian(ylim = c(0,25))
-ggplot(plotRmseB, aes(x=RMSE, fill=Models)) + geom_density(alpha=.3) + ggtitle("Tool B - RMSE")
+ggplot(plotRmseB, aes(x=Models, y=RMSE, fill=Models)) + geom_boxplot() + 
+  scale_fill_discrete(labels=c("Baseline","ARIMA","MARS","Ensemble","Future 30-days avg")) +
+  scale_x_discrete(labels=c("Baseline","ARIMA","MARS","Ensemble","Future 30-days avg")) +
+  ggtitle("Asset B - RMSE") + coord_cartesian(ylim = c(0,25)) + theme_classic()
+ggplot(plotRmseB, aes(x=RMSE, fill=Models)) + geom_density(alpha=.3) + 
+  scale_fill_discrete(labels=c("Baseline","ARIMA","MARS","Ensemble","Future 30-days avg")) +
+  xlab("Asset B - RMSE") + ylab("Density") + coord_cartesian(xlim = c(0,30)) + theme_classic()
 
-ggplot(plotRmseC, aes(x=Models, y=RMSE, fill=Models)) + geom_boxplot() + ggtitle("Tool C - RMSE")
-ggplot(plotRmseC, aes(x=RMSE, fill=Models)) + geom_density(alpha=.3) + ggtitle("Tool C - RMSE")
+ggplot(plotRmseC, aes(x=Models, y=RMSE, fill=Models)) + geom_boxplot() + 
+  scale_fill_discrete(labels=c("Baseline","ARIMA","MARS","Ensemble","Future 30-days avg")) +
+  scale_x_discrete(labels=c("Baseline","ARIMA","MARS","Ensemble","Future 30-days avg")) +
+  ggtitle("Asset C - RMSE") + theme_classic()
+ggplot(plotRmseC, aes(x=RMSE, fill=Models)) + geom_density(alpha=.3) + 
+  scale_fill_discrete(labels=c("Baseline","ARIMA","MARS","Ensemble","Future 30-days avg")) +
+  xlab("Asset C - RMSE") + ylab("Density") + theme_classic()
 
 
 ############  Average RMSE comparison ############
@@ -458,3 +480,54 @@ mean(arimaRmseC$rmse)
 mean(mars1M.RMSE.C$rmse)
 mean(marsEnsembleRMSE.C$rmse)
 mean(bestAvgRmseC$rmse)
+
+
+
+
+
+############ Plot Prediction Comparison Functions ############
+PlotPredictionComparison <- function(compareStartDate, comparingHistDays, baseline, arimaForecast, ensembleForecast, bestAvg){
+  
+  # Actual demand starting from the comparingDays
+  actual = filter(baseline, date >= compareStartDate-comparingHistDays & date < compareStartDate)[,1:2]
+  actual$Baseline = NA
+  actual$ARIMA = NA
+  actual$Ensemble = NA
+  actual$Future.AVG = NA
+  
+  # 30 days demand starting from the sampled date
+  predictions = filter(baseline, date >= compareStartDate)[1:30,1:2]
+  
+  # Transpose the forecasted 30 days demand data in columns, starting from the sampled date
+  predictions$Baseline = as.data.frame(t(filter(baseline, date == compareStartDate)[,3:ncol(baseline)]))[,1]
+  predictions$ARIMA = as.data.frame(t(filter(arimaForecast, date == compareStartDate)[,3:ncol(arimaForecast)]))[,1]
+  predictions$Ensemble = as.data.frame(t(filter(ensembleForecast, date == compareStartDate)[,3:ncol(ensembleForecast)]))[,1]
+  predictions$Future.AVG = as.data.frame(t(filter(bestAvg, date == compareStartDate)[,3:ncol(bestAvg)]))[,1]
+  
+  plot_data <- rbind(actual, predictions)
+  
+  # TODO Plot adjust colors
+
+    ggplot(plot_data) + 
+    geom_line(aes(x=date, y=daily.demand, colour = "1. Actual Demand", color="black"), size=0.8) + 
+    geom_line(aes(x=date, y=Baseline, colour = "2. Baseline Prediction"), linetype="twodash", size=1) + 
+    geom_line(aes(x=date, y=ARIMA, colour = "3. ARIMA Prediction"), linetype="dotdash", size=1) +
+    geom_line(aes(x=date, y=Ensemble, colour = "4. Ensemble Prediction"), linetype="twodash", size=1.5) +
+    geom_line(aes(x=date, y=Future.AVG, colour = "5. Future 30 days average demand"), linetype="twodash", size=1) +
+    xlab ("") + ylab ("Daily Demand") +
+    scale_colour_manual(values = c("black", "red", "orange", "deepskyblue", "yellowgreen")) +
+    theme_classic()
+  
+}
+
+# Plot Asset A
+compareStartDate = marsEnsembleForecastA[nrow(marsEnsembleForecastA)-30,]$date
+
+PlotPredictionComparison(compareStartDate, 60, baselineForecastA, arimaForecastA, marsEnsembleForecastA, bestAvgForecastA)
+
+compareStartDate = as.Date("2015-12-01")
+PlotPredictionComparison(compareStartDate, 60, baselineForecastB, arimaForecastB, marsEnsembleForecastB, bestAvgForecastB)
+
+compareStartDate = as.Date("2016-01-01")
+compareStartDate = marsEnsembleForecastA[nrow(marsEnsembleForecastA)-30,]$date
+PlotPredictionComparison(compareStartDate, 60, baselineForecastC, arimaForecastC, marsEnsembleForecastC, bestAvgForecastC)
